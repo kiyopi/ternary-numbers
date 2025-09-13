@@ -2,24 +2,92 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Cognitive Resonator v2.0</title>
+    <title>Cognitive Resonator (Final)</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
-        #controls { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.5); padding: 10px; border-radius: 10px; display: flex; gap: 10px; }
-        .btn { padding: 10px 20px; border: 1px solid #fff; border-radius: 5px; cursor: pointer; transition: all 0.3s; }
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: 'Hiragino Sans', 'Meiryo', sans-serif; transition: background-color 1s ease; }
+
+        /* UI全体のコンテナを左下に配置 */
+        #hud-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 300px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.2);
+            font-size: 14px;
+        }
+
+        /* 操作ボタン */
+        #controls {
+            display: flex;
+            gap: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+        .btn {
+            flex-grow: 1;
+            text-align: center;
+            padding: 8px;
+            border: 1px solid #fff;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
         .btn:hover { background: #fff; color: #000; }
         .btn.active { background: #00aaff; color: #fff; border-color: #00aaff; }
-        #info { position: absolute; bottom: 20px; left: 20px; font-size: 18px; text-shadow: 0 0 5px #000; }
+
+        /* 解説テキスト */
+        #commentary-panel { line-height: 1.5; margin-bottom: 10px; }
+        #commentary-panel h3 { font-size: 16px; margin-top: 0; margin-bottom: 5px; }
+        #commentary-panel p { margin: 0; font-size: 13px; opacity: 0.8; }
+
+        /* リアルタイム情報 */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px 15px;
+        }
+
+        /* 右上の感情表示 */
+        #emotion-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 32px;
+            font-weight: bold;
+            background: rgba(0,0,0,0.6);
+            padding: 5px 15px;
+            border-radius: 10px;
+        }
+        
+        #flash-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 60%); pointer-events: none; opacity: 0; transition: opacity 0.5s ease-out; }
     </style>
 </head>
 <body>
-    <div id="controls">
-        <div id="kun-btn" class="btn active">訓読み (12サイクル / 片脳)</div>
-        <div id="on-btn" class="btn">音読み (16サイクル / 両脳)</div>
-    </div>
-    <div id="info">
-        <div id="mode-info">現在のモード: 訓読み</div>
-        <div id="cycle-info">サイクル: 1 / 12</div>
+    <div id="flash-overlay"></div>
+    <div id="emotion-info">喜</div>
+
+    <div id="hud-container">
+        <div id="controls">
+            <div id="kun-btn" class="btn active">訓読み (12)</div>
+            <div id="on-btn" class="btn">音読み (16)</div>
+        </div>
+
+        <div id="commentary-panel">
+            <h3 id="commentary-title"></h3>
+            <p id="commentary-text"></p>
+        </div>
+
+        <div class="info-grid">
+            <div id="mode-info"></div>
+            <div id="cycle-info"></div>
+            <div id="angle-info"></div>
+            <div id="color-info"></div>
+        </div>
     </div>
 
     <script type="importmap">
@@ -33,7 +101,7 @@
         // --- 基本設定 ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 2, 6);
+        camera.position.set(0, 1.5, 6);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
@@ -41,134 +109,131 @@
         controls.enableDamping = true;
 
         // --- ライティング ---
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        dirLight.position.set(5, 5, 5);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(8, 10, 5);
         scene.add(dirLight);
 
-        // --- 中心オブジェクト (3進数の象徴) ---
-        const crystal = new THREE.Mesh(
-            new THREE.IcosahedronGeometry(1, 0),
-            new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.5, roughness: 0.2, transparent: true, opacity: 0.8 })
-        );
+        // --- オブジェクト ---
+        const crystal = new THREE.Mesh( new THREE.IcosahedronGeometry(1.5, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.4, roughness: 0.3 }) );
         scene.add(crystal);
-
-        // --- サイクルを表現する光の球 ---
         const particleGroup = new THREE.Group();
         scene.add(particleGroup);
-
-        // --- tengu平面 ---
-        const planeMaterial = (color) => new THREE.MeshBasicMaterial({
-            color: color,
-            side: THREE.DoubleSide,
-            transparent: true,
-            opacity: 0.1,
-            depthWrite: false
-        });
-        const planeSize = 10;
-        const kokeTengu = new THREE.Mesh(new THREE.PlaneGeometry(planeSize, planeSize), planeMaterial(0x00ff00)); // 苔: 水平面
-        kokeTengu.rotation.x = -Math.PI / 2;
-        const shuTengu = new THREE.Mesh(new THREE.PlaneGeometry(planeSize, planeSize), planeMaterial(0xff8800)); // 朱: 前額面
-        const kuuTengu = new THREE.Mesh(new THREE.PlaneGeometry(planeSize, planeSize), planeMaterial(0x00aaff)); // 空: 矢状面
-        kuuTengu.rotation.y = Math.PI / 2;
         
+        // --- tengu平面 ---
+        const planeMaterial = (color) => new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide, transparent: true, opacity: 0.1, depthWrite: false });
+        const planeSize = 12;
+        const kokeTengu = new THREE.Mesh(new THREE.PlaneGeometry(planeSize, planeSize), planeMaterial(0x00ff00));
+        kokeTengu.rotation.x = -Math.PI / 2;
+        const shuTengu = new THREE.Mesh(new THREE.PlaneGeometry(planeSize, planeSize), planeMaterial(0xff8800));
+        const kuuTengu = new THREE.Mesh(new THREE.PlaneGeometry(planeSize, planeSize), planeMaterial(0x00aaff));
+        kuuTengu.rotation.y = Math.PI / 2;
         const tenguGroup = new THREE.Group();
         tenguGroup.add(kokeTengu, shuTengu, kuuTengu);
         scene.add(tenguGroup);
 
-        // --- シミュレーション状態 ---
-        let simState = {
-            mode: 'kun', // 'kun' or 'on'
-            cycles: 12,
-            currentCycle: 0,
-            lastCycleTime: 0,
-            cycleDuration: 1000 // 1秒
+        // --- データ ---
+        const emotions = {
+            '喜': { color: '#282800', number: 15, front: new THREE.Color("#f5a623"), side: new THREE.Color("#50e3c2") },
+            '怒': { color: '#280000', number: 5,  front: new THREE.Color("#d0021b"), side: new THREE.Color("#bd10e0") },
+            '哀': { color: '#000028', number: 3,  front: new THREE.Color("#4a90e2"), side: new THREE.Color("#ffffff") },
+            '楽': { color: '#002800', number: 9,  front: new THREE.Color("#7ed321"), side: new THREE.Color("#4a4a4a") }
+        };
+        const emotionOrder = ['喜', '怒', '哀', '楽'];
+        const commentaries = {
+            kun: { title: "片脳モード (訓読み)", text: "世界を12のサイクルで認識します。主に左脳が活動し、基本的な物質世界の法則を捉えるモードです。" },
+            on: { title: "両脳モード (音読み)", text: "世界を16のサイクルで認識します。左右の脳が共鳴し、より高次元な潜在意識(灰tengu)にアクセス。世界へ深く干渉するモードです。" }
         };
 
-        // --- UI要素 ---
-        const kunBtn = document.getElementById('kun-btn');
-        const onBtn = document.getElementById('on-btn');
-        const modeInfo = document.getElementById('mode-info');
-        const cycleInfo = document.getElementById('cycle-info');
+        // --- 状態管理 ---
+        let simState = { mode: 'kun', cycles: 12, currentCycle: 0, lastCycleTime: 0, cycleDuration: 1000, currentEmotion: '喜' };
 
+        // --- UI要素 ---
+        const ui = {
+            kunBtn: document.getElementById('kun-btn'), onBtn: document.getElementById('on-btn'),
+            modeInfo: document.getElementById('mode-info'), cycleInfo: document.getElementById('cycle-info'),
+            emotionInfo: document.getElementById('emotion-info'), flashOverlay: document.getElementById('flash-overlay'),
+            commentaryTitle: document.getElementById('commentary-title'), commentaryText: document.getElementById('commentary-text'),
+            angleInfo: document.getElementById('angle-info'), colorInfo: document.getElementById('color-info')
+        };
+        
         function updateParticles() {
             particleGroup.clear();
-            const radius = 2.5;
+            const radius = 3;
             for (let i = 0; i < simState.cycles; i++) {
                 const angle = (i / simState.cycles) * Math.PI * 2;
-                const x = Math.cos(angle) * radius;
-                const z = Math.sin(angle) * radius;
-                const particle = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.05, 8, 8),
-                    new THREE.MeshBasicMaterial({ color: 0xffffff })
-                );
-                particle.position.set(x, 0, z);
-                particleGroup.add(particle);
+                const p = new THREE.Mesh( new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }) );
+                p.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+                particleGroup.add(p);
             }
         }
 
         function setMode(newMode) {
             simState.mode = newMode;
-            if (newMode === 'kun') {
-                simState.cycles = 12;
-                kunBtn.classList.add('active');
-                onBtn.classList.remove('active');
-                modeInfo.innerText = "現在のモード: 訓読み (片脳)";
-                kokeTengu.material.opacity = 0.2;
-                shuTengu.material.opacity = 0.1;
-                kuuTengu.material.opacity = 0.1;
-            } else { // on
-                simState.cycles = 16;
-                onBtn.classList.add('active');
-                kunBtn.classList.remove('active');
-                modeInfo.innerText = "現在のモード: 音読み (両脳)";
-                kokeTengu.material.opacity = 0.25;
-                shuTengu.material.opacity = 0.25;
-                kuuTengu.material.opacity = 0.25;
-            }
+            simState.cycles = (newMode === 'kun') ? 12 : 16;
+            ui.kunBtn.classList.toggle('active', newMode === 'kun');
+            ui.onBtn.classList.toggle('active', newMode !== 'kun');
+            ui.modeInfo.innerText = `モード: ${newMode === 'kun' ? '訓読み' : '音読み'}`;
+            ui.commentaryTitle.innerText = commentaries[newMode].title;
+            ui.commentaryText.innerText = commentaries[newMode].text;
+            
+            kokeTengu.material.opacity = (newMode === 'kun') ? 0.25 : 0.15;
+            shuTengu.material.opacity = (newMode === 'on') ? 0.25 : 0.1;
+            kuuTengu.material.opacity = (newMode === 'on') ? 0.25 : 0.1;
+
             simState.currentCycle = 0;
             updateParticles();
         }
 
-        kunBtn.addEventListener('click', () => setMode('kun'));
-        onBtn.addEventListener('click', () => setMode('on'));
+        ui.kunBtn.addEventListener('click', () => setMode('kun'));
+        ui.onBtn.addEventListener('click', () => setMode('on'));
 
-        // --- アニメーションループ ---
-        const clock = new THREE.Clock();
+        function triggerFlash() {
+            ui.flashOverlay.style.opacity = 1;
+            setTimeout(() => { ui.flashOverlay.style.opacity = 0; }, 250);
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             const now = Date.now();
             
-            // サイクル更新
             if (now - simState.lastCycleTime > simState.cycleDuration) {
                 simState.currentCycle = (simState.currentCycle + 1) % simState.cycles;
                 simState.lastCycleTime = now;
-                cycleInfo.innerText = `サイクル: ${simState.currentCycle + 1} / ${simState.cycles}`;
+                const emotionIndex = simState.currentCycle % 4;
+                simState.currentEmotion = emotionOrder[emotionIndex];
+                ui.emotionInfo.innerText = simState.currentEmotion;
+                document.body.style.backgroundColor = emotions[simState.currentEmotion].color;
+                if ((simState.currentCycle + 1) === emotions[simState.currentEmotion].number) {
+                    triggerFlash();
+                }
             }
+            
+            ui.cycleInfo.innerText = `サイクル: ${simState.currentCycle + 1}/${simState.cycles}`;
 
-            // パーティクルのハイライト
             particleGroup.children.forEach((p, i) => {
-                p.material.color.set(i === simState.currentCycle ? 0x00aaff : 0xffffff);
+                p.material.color.set(i === simState.currentCycle ? '#00aaff' : '#ffffff');
                 p.scale.setScalar(i === simState.currentCycle ? 2 : 1);
             });
             
-            // 共鳴エフェクト (音読みモードの最終サイクル)
-            if (simState.mode === 'on' && simState.currentCycle === simState.cycles - 1) {
-                const scale = 1 + Math.sin(clock.getElapsedTime() * 10) * 0.1;
-                crystal.scale.setScalar(scale);
-            } else {
-                crystal.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
-            }
+            const emotionData = emotions[simState.currentEmotion];
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
+            const angleFactor = (cameraDirection.x + 1) / 2;
+            crystal.material.color.lerpColors(emotionData.front, emotionData.side, angleFactor);
+            
+            const angle = new THREE.Vector3(0,0,-1).angleTo(cameraDirection);
+            ui.angleInfo.innerText = `視点角度: ${angle.toFixed(2)}`;
+            const c = crystal.material.color;
+            ui.colorInfo.innerText = `色(RGB): ${c.r.toFixed(2)},${c.g.toFixed(2)},${c.b.toFixed(2)}`;
 
             crystal.rotation.y += 0.005;
-            particleGroup.rotation.y += 0.001;
-            tenguGroup.visible = simState.mode === 'on' || kokeTengu.material.opacity > 0.1; // 見た目の調整
+            particleGroup.rotation.y += 0.002;
 
             renderer.render(scene, camera);
             controls.update();
         }
 
-        // 初期化
         setMode('kun');
         animate();
     </script>
