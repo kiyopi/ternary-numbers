@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ternary Resonator</title>
+    <style>
+        /* 基本スタイル */
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #0a0a1a;
+            color: #fff;
+        }
+        canvas {
+            display: block;
+        }
+
+        /* UIのスタイル */
+        #ui-container {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 15px 25px;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .gauge-wrapper {
+            width: 200px;
+            text-align: center;
+        }
+        .gauge-label {
+            font-size: 14px;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+        .gauge-bar {
+            width: 100%;
+            height: 20px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .gauge-fill {
+            height: 100%;
+            width: 50%;
+            border-radius: 10px;
+            transition: width 0.5s ease-out, background-color 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .l-brain .gauge-fill { background-color: #4a90e2; }
+        .r-brain .gauge-fill { background-color: #d0021b; }
+
+        /* 共鳴時のグローエフェクト */
+        .resonating {
+            box-shadow: 0 0 15px 5px #f5a623, 0 0 5px 2px #f8e71c inset;
+        }
+        
+        /* タイトル表示 */
+        #title {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            font-weight: 200;
+            color: rgba(255, 255, 255, 0.8);
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">Ternary Resonator</div>
+    <div id="ui-container">
+        <div class="gauge-wrapper l-brain">
+            <div class="gauge-label">L-Brain</div>
+            <div class="gauge-bar">
+                <div id="l-brain-fill" class="gauge-fill">50%</div>
+            </div>
+        </div>
+        <div class="gauge-wrapper r-brain">
+            <div class="gauge-label">R-Brain</div>
+            <div class="gauge-bar">
+                <div id="r-brain-fill" class="gauge-fill">50%</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ## 1. シーンの初期設定 ##
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // ## 2. ライティング ##
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        // ## 3. オブジェクトの作成 ##
+        const geometry = new THREE.IcosahedronGeometry(1.5, 0);
+        const material = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff,
+            metalness: 0.3,
+            roughness: 0.5 
+        });
+        const crystal = new THREE.Mesh(geometry, material);
+        scene.add(crystal);
+        
+        // ワイヤーフレームを追加して立体感を強調
+        const wireframe = new THREE.LineSegments(
+            new THREE.EdgesGeometry(geometry),
+            new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1, transparent: true, opacity: 0.3 })
+        );
+        crystal.add(wireframe);
+
+        // ## 4. コントロール ##
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // ## 5. シミュレーションの状態管理 ##
+        let currentState = 0; // 0, 1, 2の3状態
+        const stateDuration = 3000; // 3秒ごとに状態変化
+        let lastStateChange = Date.now();
+
+        // 状態ごとの共鳴率
+        const resonanceStates = [
+            { l: 0.8, r: 0.2 }, // 状態 0
+            { l: 0.4, r: 0.6 }, // 状態 1
+            { l: 0.5, r: 0.5 }  // 状態 2 (共鳴)
+        ];
+
+        // 視点ごとのカラーパレット
+        const colorPalettes = {
+            front: [new THREE.Color("#4a90e2"), new THREE.Color("#50e3c2"), new THREE.Color("#f5a623")],
+            side: [new THREE.Color("#d0021b"), new THREE.Color("#bd10e0"), new THREE.Color("#ffffff")]
+        };
+
+        // UI要素への参照
+        const lBrainFill = document.getElementById('l-brain-fill');
+        const rBrainFill = document.getElementById('r-brain-fill');
+        const lBrainBar = document.querySelector('.l-brain .gauge-bar');
+        const rBrainBar = document.querySelector('.r-brain .gauge-bar');
+
+
+        // ## 6. アニメーションループ ##
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsedTime = clock.getElapsedTime();
+            const now = Date.now();
+
+            // --- 状態の更新 ---
+            if (now - lastStateChange > stateDuration) {
+                currentState = (currentState + 1) % 3;
+                lastStateChange = now;
+            }
+
+            // --- UIの更新 ---
+            const targetState = resonanceStates[currentState];
+            lBrainFill.style.width = `${targetState.l * 100}%`;
+            lBrainFill.innerText = `${Math.round(targetState.l * 100)}%`;
+            rBrainFill.style.width = `${targetState.r * 100}%`;
+            rBrainFill.innerText = `${Math.round(targetState.r * 100)}%`;
+
+            if (currentState === 2) { // 共鳴状態のエフェクト
+                lBrainBar.classList.add('resonating');
+                rBrainBar.classList.add('resonating');
+            } else {
+                lBrainBar.classList.remove('resonating');
+                rBrainBar.classList.remove('resonating');
+            }
+            
+            // --- オブジェクトの色の更新（視点による変化）---
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
+            // 水平方向の角度を[-1, 1]の範囲で簡易的に計算
+            const angleFactor = Math.abs(cameraDirection.x); 
+            
+            const frontColor = colorPalettes.front[currentState];
+            const sideColor = colorPalettes.side[currentState];
+            
+            // 現在のオブジェクトの色を、視点に応じて滑らかに変化させる
+            crystal.material.color.lerpColors(frontColor, sideColor, angleFactor);
+            
+
+            // --- オブジェクトの回転 ---
+            crystal.rotation.y += 0.002;
+            crystal.rotation.x += 0.001;
+
+            controls.update(); // カメラコントロールの更新
+            renderer.render(scene, camera);
+        }
+
+        // ウィンドウリサイズへの対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // アニメーション開始
+        animate();
+    </script>
+</body>
+</html>
