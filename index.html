@@ -3,210 +3,214 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>【最終概念版 v5.3】座標キューヲメンデ変換シミュレータ</title>
+    <title>座標キューヲメンデ変換プロトタイプ (フェーズ2)</title>
     <style>
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
-        #main-container { display: flex; flex-grow: 1; }
-        #controls-panel { width: 350px; padding: 20px; background-color: #1e1e1e; box-shadow: 2px 0 5px rgba(0,0,0,0.5); z-index: 10; display: flex; flex-direction: column; border-right: 1px solid #333; overflow-y: auto;}
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #121212; color: #e0e0e0; overflow: hidden; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #ui-panel { position: absolute; top: 20px; left: 20px; background-color: rgba(30, 30, 30, 0.85); padding: 20px; border-radius: 8px; border-left: 5px solid #bb86fc; width: 340px; }
         h1 { font-size: 1.5em; margin-top: 0; color: #bb86fc; }
-        p { font-size: 0.9em; line-height: 1.6; color: #b0b0b0; }
-        .input-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; color: #bb86fc; }
-        input[type="number"] { width: 100%; padding: 8px; box-sizing: border-box; background-color: #333; border: 1px solid #555; border-radius: 4px; color: #e0e0e0; }
-        button { width: 100%; padding: 10px; background-color: #6200ee; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1em; transition: background-color 0.3s; }
-        button:hover { background-color: #3700b3; }
-        .info-section { margin-top: 20px; padding: 15px; background-color: #2a2a2a; }
-        .info-section h3 { margin-top: 0; font-size: 1.2em; padding-bottom: 10px; border-bottom: 1px solid #444;}
-        .info-section p { margin: 10px 0; font-size: 1em; word-wrap: break-word; line-height: 1.5; }
-        #calc-process { border-left: 5px solid #03dac6; }
-        #calc-process h3 { color: #03dac6; }
-        .step-label { font-weight: bold; color: #bb86fc; font-size: 0.9em; }
-        #legend { border-left: 5px solid #bb86fc; }
-        #legend h3 { color: #bb86fc; }
-        .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
-        .legend-color-box { width: 20px; height: 20px; margin-right: 10px; border: 1px solid #555; }
-        #canvas-container { flex-grow: 1; position: relative; }
-        #three-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .emotion-btn { padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 1em; transition: transform 0.2s; }
+        .emotion-btn:hover { transform: scale(1.05); }
+        #joy-btn { background-color: #ff4444; color: white; }
+        #anger-btn { background-color: #ffff00; color: black; }
+        #sad-btn { background-color: #4488ff; color: white; }
+        #fun-btn { background-color: #333333; color: white; }
+        .info-section { background-color: #2a2a2a; padding: 15px; border-radius: 4px; margin-top: 15px; }
+        .info-item { margin-bottom: 10px; }
+        .info-item label { font-weight: bold; color: #03dac6; display: block; font-size: 0.9em;}
+        .info-item span { font-size: 1.1em; }
+        #rotation-animation { min-height: 2em; transition: background-color 0.5s; }
+        #angle-highlight { position: absolute; top: 20px; right: 20px; background-color: rgba(207, 102, 121, 0.9); padding: 10px 15px; border-radius: 4px; font-size: 1.1em; color: white; transition: opacity 0.5s; opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body>
-
-    <div id="main-container">
-        <div id="controls-panel">
-            <h1>座標キューヲメンデ変換シミュレータ</h1>
-            
-            <p>平面の2点とアルザル電子を結ぶ線で構成される「3進数の立体」の概念を簡易的にシミュレートします。</p>
-
-            <div class="input-group">
-                <label for="x-coord">目視座標 X</label>
-                <input type="number" id="x-coord" value="8">
+    <div id="canvas-container">
+        <canvas id="three-canvas"></canvas>
+    </div>
+    <div id="ui-panel">
+        <h1>感情選択</h1>
+        <div class="button-group">
+            <button id="joy-btn" class="emotion-btn">喜 (Joy)</button>
+            <button id="anger-btn" class="emotion-btn">怒 (Anger)</button>
+            <button id="sad-btn" class="emotion-btn">哀 (Sad)</button>
+            <button id="fun-btn" class="emotion-btn">楽 (Fun)</button>
+        </div>
+        <div class="info-section">
+            <div class="info-item">
+                <label>選択された感情:</label>
+                <span id="info-emotion">未選択</span>
             </div>
-            <div class="input-group">
-                <label for="y-coord">目視座標 Y</label>
-                <input type="number" id="y-coord" value="6">
-            </div>
-            
-            <button id="calculate-btn">構築</button>
-
-            <div id="calc-process" class="info-section">
-                <h3>立体座標の算出プロセス</h3>
-                <p><span class="step-label">Step 1: 平面上の観測値</span><br>
-                   <span id="info-step1-desc"></span></p>
-                <p><span class="step-label">Step 2: 立体表記への変換</span><br>
-                   <span id="info-step2-base"></span><br>
-                   <span id="info-step2-height"></span></p>
-                <p><span class="step-label">Step 3: 真の立体の算出</span><br>
-                   <strong><span id="info-step3-hypotenuse"></span></strong></p>
-            </div>
-            
-            <div id="legend" class="info-section">
-                <h3>凡例</h3>
-                <div class="legend-item"><div class="legend-color-box" style="background-color: rgba(255, 255, 0, 0.5);"></div><span>3進数の立体 (実体)</span></div>
-                <div class="legend-item"><div class="legend-color-box" style="background-color: #ffff00;"></div><span>アルザル電子 (頂点)</span></div>
-                <div class="legend-item"><div class="legend-color-box" style="background-color: rgba(98, 0, 238, 0.4);"></div><span>知覚平面 (脳内幻影)</span></div>
-                <div class="legend-item"><div class="legend-color-box" style="background-color: #ff0000;"></div><span>苔tengu (X軸)</span></div>
-                <div class="legend-item"><div class="legend-color-box" style="background-color: #00ff00;"></div><span>朱tengu (Y軸)</span></div>
-                <div class="legend-item"><div class="legend-color-box" style="background-color: #0000ff;"></div><span>空tengu (Z軸)</span></div>
+            <div class="info-item">
+                <label>現在の視点角度 (方位角 / 仰角):</label>
+                <span id="info-angle">---</span>
             </div>
         </div>
-        <div id="canvas-container">
-            <canvas id="three-canvas"></canvas>
+        <div class="info-section">
+            <div class="info-item">
+                <label>30進数乗数回転 (思考ループ):</label>
+                <span id="rotation-animation">感情を選択してください</span>
+            </div>
         </div>
     </div>
+    <div id="angle-highlight"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
     <script>
+        // --- A. 基礎データ定義 ---
+        const EMOTIONS = {
+            JOY: { name: '喜', dna: 'T', overtone: 15, color: 0xff4444 },
+            ANGER: { name: '怒', dna: 'A', overtone: 5, color: 0xffff00 },
+            SAD: { name: '哀', dna: 'C', overtone: 3, color: 0x4488ff },
+            FUN: { name: '楽', dna: 'G', overtone: 9, color: 0x333333 }
+        };
+
         // --- DOM要素 ---
-        const xInput = document.getElementById('x-coord');
-        const yInput = document.getElementById('y-coord');
-        const calculateBtn = document.getElementById('calculate-btn');
         const canvas = document.getElementById('three-canvas');
-        const canvasContainer = document.getElementById('canvas-container');
-        
-        const infoStep1Desc = document.getElementById('info-step1-desc');
-        const infoStep2Base = document.getElementById('info-step2-base');
-        const infoStep2Height = document.getElementById('info-step2-height');
-        const infoStep3Hypotenuse = document.getElementById('info-step3-hypotenuse');
+        const joyBtn = document.getElementById('joy-btn'), angerBtn = document.getElementById('anger-btn'), sadBtn = document.getElementById('sad-btn'), funBtn = document.getElementById('fun-btn');
+        const infoEmotion = document.getElementById('info-emotion'), infoAngle = document.getElementById('info-angle');
+        const rotationAnimationSpan = document.getElementById('rotation-animation');
+        const angleHighlightDiv = document.getElementById('angle-highlight');
 
-        // --- 3Dシーン ---
-        let scene, camera, renderer, controls;
-        let simulationGroup;
-
-        // --- 定数 ---
-        const Z_DIMENSION = 4;
-
-        function toCustomNotation(num) {
-            if (Math.abs(num - Math.round(num)) < 1e-9) return `${Math.round(num)}√1√1`;
-            const squared = num * num;
-            if (Math.abs(squared - Math.round(squared)) < 1e-9) return `1√${Math.round(squared)}√1`;
-            return `1√${squared.toFixed(2)}√1`;
-        }
+        let scene, camera, renderer, controls, mainObject;
+        let rotationInterval;
+        let isDistorting = false, distortionTimer;
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000000);
+            scene.background = new THREE.Color(0x121212);
 
-            camera = new THREE.PerspectiveCamera(75, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
-            camera.position.set(10, 8, 10);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
 
             renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
-
+            
+            // B.2. 立体演算の強制（回転行列の強調）
+            // Three.jsのOrbitControlsは内部で回転行列(Rotation Matrix)とクォータニオンを使用しており、
+            // 視点変更は常に立体的な演算に基づいています。
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambientLight);
             const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight.position.set(5, 10, 7.5);
+            directionalLight.position.set(3, 5, 4);
             scene.add(directionalLight);
             
-            simulationGroup = new THREE.Group();
-            scene.add(simulationGroup);
+            const geometry = new THREE.IcosahedronGeometry(1.5, 1);
+            const defaultMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 50 });
+            mainObject = new THREE.Mesh(geometry, defaultMaterial);
+            scene.add(mainObject);
+            
+            joyBtn.addEventListener('click', () => selectEmotion(EMOTIONS.JOY));
+            angerBtn.addEventListener('click', () => selectEmotion(EMOTIONS.ANGER));
+            sadBtn.addEventListener('click', () => selectEmotion(EMOTIONS.SAD));
+            funBtn.addEventListener('click', () => selectEmotion(EMOTIONS.FUN));
+            
+            // C.1. オブジェクトの捻れ属性
+            controls.addEventListener('change', () => {
+                if (!isDistorting) {
+                    isDistorting = true;
+                    if(distortionTimer) clearTimeout(distortionTimer);
+                    distortionTimer = setTimeout(() => { isDistorting = false; }, 150);
+                }
+            });
 
-            calculateBtn.addEventListener('click', updateSimulation);
-            window.addEventListener('resize', onWindowResize);
-
-            updateSimulation();
             animate();
         }
 
-        function updateSimulation() {
-            const x = parseFloat(xInput.value) || 0;
-            const y = parseFloat(yInput.value) || 0;
-            const z = Z_DIMENSION;
+        // A.1. 30進数演算関数
+        function calculate_30_remainder(N, i) {
+            return (N ** i) % 30;
+        }
 
-            const baseLength = Math.sqrt(x*x + y*y);
-            const heightLength = z;
-            const hypotenuseLength = Math.sqrt(x*x + y*y + z*z);
+        function selectEmotion(emotion) {
+            mainObject.material.color.set(emotion.color);
+            infoEmotion.textContent = emotion.name;
 
-            infoStep1Desc.textContent = `目視座標 (${x}, ${y}) から、平面の基底長 ${baseLength.toFixed(3)} が算出される。`;
-            infoStep2Base.textContent = `基底の立体表記: ${toCustomNotation(baseLength)}`;
-            infoStep2Height.textContent = `高さの立体表記: ${toCustomNotation(heightLength)}`;
-            infoStep3Hypotenuse.textContent = `真の立体の斜辺: ${toCustomNotation(hypotenuseLength)}`;
+            // C.1. オブジェクトの捻れ属性 (初期設定)
+            mainObject.rotation.set(0.1, 0.2, 0); // わずかに傾ける
 
-            while(simulationGroup.children.length > 0){ 
-                simulationGroup.remove(simulationGroup.children[0]); 
+            // A.2. 乗数回転アニメーション
+            if (rotationInterval) clearInterval(rotationInterval);
+            let i = 1;
+            let sequence = [];
+            rotationInterval = setInterval(() => {
+                if (i > 4) {
+                    i = 1;
+                    sequence = [];
+                }
+                const remainder = calculate_30_remainder(emotion.overtone, i);
+                sequence.push(`${remainder}°`);
+                rotationAnimationSpan.textContent = sequence.join(' → ');
+
+                // A.3. 3Dオブジェクトへの反映 (明滅効果)
+                mainObject.material.emissive.set(emotion.color);
+                setTimeout(() => { mainObject.material.emissive.set(0x000000); }, 200);
+
+                i++;
+            }, 800);
+        }
+
+        let highlightTimer;
+        function showHighlight(message, duration = 1000) {
+            angleHighlightDiv.textContent = message;
+            angleHighlightDiv.style.opacity = '1';
+            if (highlightTimer) clearTimeout(highlightTimer);
+            highlightTimer = setTimeout(() => {
+                angleHighlightDiv.style.opacity = '0';
+            }, duration);
+        }
+
+        function updateInfoPanel() {
+            const pos = camera.position;
+            const azimuth = Math.atan2(pos.x, pos.z) * (180 / Math.PI);
+            const azimuthNormalized = (azimuth < 0) ? azimuth + 360 : azimuth;
+            const polar = Math.acos(pos.y / pos.length()) * (180 / Math.PI);
+            infoAngle.textContent = `${azimuthNormalized.toFixed(1)}° / ${polar.toFixed(1)}°`;
+
+            // B.1. 認知基礎単位のハイライト
+            const proximity = 5;
+            if (Math.abs(azimuthNormalized - 90) < proximity || Math.abs(azimuthNormalized - 270) < proximity) {
+                showHighlight("90°の倍数：認知と空間の基礎単位", 1500);
+            } else if (azimuthNormalized % 30 < proximity || Math.abs(azimuthNormalized % 30 - 30) < proximity) {
+                if(azimuthNormalized > proximity && Math.abs(azimuthNormalized-360) > proximity) {
+                   showHighlight("30°の倍数：物質の基礎単位");
+                }
             }
-            
-            const v0 = new THREE.Vector3(0, 0, 0);
-            const v1 = new THREE.Vector3(x, y, 0);
-            const v2 = new THREE.Vector3(x, y, z);
-
-            const triGeometry = new THREE.BufferGeometry().setFromPoints([v0, v1, v2]);
-            const triMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffff00, opacity: 0.3, transparent: true, side: THREE.DoubleSide
-            });
-            const ternaryTriangle = new THREE.Mesh(triGeometry, triMaterial);
-            simulationGroup.add(ternaryTriangle);
-            
-            const edges = new THREE.EdgesGeometry(triGeometry);
-            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
-            const wireframe = new THREE.LineSegments(edges, lineMaterial);
-            simulationGroup.add(wireframe);
-
-            const planeGeometry = new THREE.PlaneGeometry(x, y);
-            const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x6200ee, opacity: 0.25, transparent: true, side: THREE.DoubleSide });
-            const perceivedPlane = new THREE.Mesh(planeGeometry, planeMaterial);
-            perceivedPlane.position.set(x / 2, y / 2, 0);
-            simulationGroup.add(perceivedPlane);
-            
-            const electronMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const electronGeometry = new THREE.SphereGeometry(0.15, 16, 16);
-            
-            const electron0 = new THREE.Mesh(electronGeometry.clone(), electronMaterial.clone());
-            electron0.position.copy(v0);
-            simulationGroup.add(electron0);
-
-            const electron1 = new THREE.Mesh(electronGeometry.clone(), electronMaterial.clone());
-            electron1.position.copy(v1);
-            simulationGroup.add(electron1);
-
-            const electron2 = new THREE.Mesh(electronGeometry.clone(), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
-            electron2.position.copy(v2);
-            simulationGroup.add(electron2);
-
-            const axesHelper = new THREE.AxesHelper(Math.max(x, y, z) + 2);
-            simulationGroup.add(axesHelper);
+        }
+        
+        // C.3. ひずみエフェクト
+        function applyDistortion() {
+             if (isDistorting) {
+                const time = Date.now() * 0.01;
+                mainObject.scale.x = 1 + Math.sin(time) * 0.02;
+                mainObject.scale.y = 1 + Math.cos(time) * 0.02;
+            } else {
+                mainObject.scale.set(1, 1, 1);
+            }
         }
 
         function onWindowResize() {
-            camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+            camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
+            updateInfoPanel();
+            applyDistortion();
             renderer.render(scene, camera);
         }
-
+        
+        window.addEventListener('resize', onWindowResize);
         init();
     </script>
-
 </body>
 </html>
