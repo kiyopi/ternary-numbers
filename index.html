@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>座標キューヲメンデ変換プロトタイプ (フェーズ3)</title>
+    <title>座標キューヲメンデ変換プロトタイプ (最終版)</title>
     <style>
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #121212; color: #e0e0e0; overflow: hidden; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
@@ -22,6 +22,8 @@
         .info-item:last-child { margin-bottom: 0; }
         .info-item label { font-weight: bold; color: #03dac6; display: block; font-size: 0.9em;}
         .info-item span { font-size: 1.1em; min-height: 1.2em; display: inline-block; }
+        #info-ssv.warning { color: #ff4444; font-weight: bold;}
+        #info-ssv.normal { color: #00dd00; }
         #angle-highlight { position: absolute; top: 20px; right: 20px; background-color: rgba(207, 102, 121, 0.9); padding: 10px 15px; border-radius: 4px; font-size: 1.1em; color: white; transition: opacity 0.5s; opacity: 0; pointer-events: none; }
     </style>
 </head>
@@ -37,26 +39,10 @@
                 <button id="fun-btn" class="emotion-btn">楽 (Fun)</button>
             </div>
         </section>
-        <section>
-            <h2>B. 認知三軸 (Tengu)</h2>
-            <div class="button-group">
-                <button id="x-tengu-btn" class="tengu-btn">X-tengu</button>
-                <button id="y-tengu-btn" class="tengu-btn">Y-tengu</button>
-                <button id="z-tengu-btn" class="tengu-btn">Z-tengu</button>
-                <button id="free-btn" class="tengu-btn active">Free</button>
-            </div>
-        </section>
-        <section>
-            <h2>C. 観測者の立ち位置 (苔tengu)</h2>
-            <div class="button-group">
-                 <button id="nimou-btn" class="view-btn">二芒星視点</button>
-                 <button id="sanmou-btn" class="view-btn">三芒星視点</button>
-            </div>
-        </section>
         <div class="info-section">
             <div class="info-item"><label>選択された感情:</label><span id="info-emotion">未選択</span></div>
-            <div class="info-item"><label>使用中の認知軸:</label><span id="info-axis">Free</span></div>
             <div class="info-item"><label>現在の視点角度 (方位角 / 仰角):</label><span id="info-angle">---</span></div>
+            <div class="info-item"><label>B. 陽界変容係数 (SSV):</label><span id="info-ssv">---</span></div>
             <div class="info-item"><label>A. この角度での感情の解釈:</label><span id="info-interpretation">---</span></div>
             <div class="info-item"><label>30進数乗数回転 (思考ループ):</label><span id="rotation-animation">---</span></div>
         </div>
@@ -71,24 +57,20 @@
             JOY:   { name: '喜', overtone: 15, color: 0xff4444 }, ANGER: { name: '怒', overtone: 5,  color: 0xffff00 },
             SAD:   { name: '哀', overtone: 3,  color: 0x4488ff }, FUN:   { name: '楽', overtone: 9,  color: 0x555555 }
         };
-        const INTERPRETATION_MAP = {
-            JOY:   { 0: "陽性エネルギー", 90: "統合が必要な要素 (15倍音)" },
-            ANGER: { 90: "衝動/運動神経 (5倍音)", 270: "社会的都合 (認知の偏り)" },
-            SAD:   { 180: "収縮/孤独感", 270: "内省的状態" },
-            FUN:   { 0: "広がり (平面)、感動", 180: "潜伏的な力 (マールススィン)" }
-        };
         let currentEmotionKey = null;
 
         const uiElements = {
             canvas: document.getElementById('three-canvas'), joyBtn: document.getElementById('joy-btn'), angerBtn: document.getElementById('anger-btn'), sadBtn: document.getElementById('sad-btn'), funBtn: document.getElementById('fun-btn'),
-            xtenguBtn: document.getElementById('x-tengu-btn'), ytenguBtn: document.getElementById('y-tengu-btn'), ztenguBtn: document.getElementById('z-tengu-btn'), freeBtn: document.getElementById('free-btn'),
-            nimouBtn: document.getElementById('nimou-btn'), sanmouBtn: document.getElementById('sanmou-btn'),
-            infoEmotion: document.getElementById('info-emotion'), infoAngle: document.getElementById('info-angle'), infoAxis: document.getElementById('info-axis'), infoInterpretation: document.getElementById('info-interpretation'),
+            infoEmotion: document.getElementById('info-emotion'), infoAngle: document.getElementById('info-angle'), infoSsv: document.getElementById('info-ssv'), infoInterpretation: document.getElementById('info-interpretation'),
             rotationAnimationSpan: document.getElementById('rotation-animation'), angleHighlightDiv: document.getElementById('angle-highlight')
         };
-        const tenguButtons = [uiElements.xtenguBtn, uiElements.ytenguBtn, uiElements.ztenguBtn, uiElements.freeBtn];
-
-        let scene, camera, renderer, controls, mainObject, rotationInterval, isDistorting = false, distortionTimer;
+        
+        let scene, camera, renderer, controls, mainObject, alzarHexagon;
+        let rotationInterval;
+        let isDistorting = false, distortionTimer;
+        let clock = new THREE.Clock();
+        let lastCameraPosition = new THREE.Vector3();
+        let ssv = 0;
 
         function init() {
             scene = new THREE.Scene();
@@ -108,8 +90,14 @@
             scene.add(directionalLight);
             
             const geometry = new THREE.IcosahedronGeometry(1.5, 1);
-            mainObject = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 50 }));
+            mainObject = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 50, transparent: true, opacity: 0.8 }));
             scene.add(mainObject);
+
+            // A.1. 内部六角形の実装
+            const hexGeom = new THREE.CircleGeometry(1, 6);
+            const hexMat = new THREE.MeshPhongMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.7, emissive: 0xaaaaaa });
+            alzarHexagon = new THREE.Mesh(hexGeom, hexMat);
+            mainObject.add(alzarHexagon);
 
             setupEventListeners();
             animate();
@@ -120,14 +108,6 @@
             uiElements.angerBtn.addEventListener('click', () => selectEmotion(EMOTIONS.ANGER, 'ANGER'));
             uiElements.sadBtn.addEventListener('click', () => selectEmotion(EMOTIONS.SAD, 'SAD'));
             uiElements.funBtn.addEventListener('click', () => selectEmotion(EMOTIONS.FUN, 'FUN'));
-            
-            uiElements.xtenguBtn.addEventListener('click', () => setActiveAxis('X'));
-            uiElements.ytenguBtn.addEventListener('click', () => setActiveAxis('Y'));
-            uiElements.ztenguBtn.addEventListener('click', () => setActiveAxis('Z'));
-            uiElements.freeBtn.addEventListener('click', () => setActiveAxis('Free'));
-
-            uiElements.nimouBtn.addEventListener('click', () => snapToViewpoint(new THREE.Vector3(5, 5, 5)));
-            uiElements.sanmouBtn.addEventListener('click', () => snapToViewpoint(new THREE.Vector3(-5, 3, 5)));
 
             controls.addEventListener('change', () => {
                 if (!isDistorting) {
@@ -149,6 +129,9 @@
             if (rotationInterval) clearInterval(rotationInterval);
             let i = 1, sequence = [];
             rotationInterval = setInterval(() => {
+                // B.3. SSVによるアニメーションの乱れ
+                if (ssv < 54 && Math.random() > 0.5) return;
+
                 if (i > 4) { i = 1; sequence = []; }
                 const remainder = calculate_30_remainder(emotion.overtone, i);
                 sequence.push(`${remainder}°`);
@@ -159,79 +142,53 @@
             }, 800);
         }
 
-        function setActiveAxis(axis) {
-            controls.minAzimuthAngle = -Infinity; controls.maxAzimuthAngle = Infinity;
-            controls.minPolarAngle = 0; controls.maxPolarAngle = Math.PI;
-            controls.enableZoom = true; controls.enablePan = true;
-
-            if (axis === 'X') { controls.minPolarAngle = Math.PI / 2; controls.maxPolarAngle = Math.PI / 2; }
-            if (axis === 'Y') { controls.minAzimuthAngle = 0; controls.maxAzimuthAngle = 0; }
-            if (axis === 'Z') { controls.enableZoom = false; controls.enablePan = false; controls.minPolarAngle = Math.PI / 2; controls.maxPolarAngle = Math.PI / 2; controls.minAzimuthAngle = 0; controls.maxAzimuthAngle = 0; }
-            
-            uiElements.infoAxis.textContent = axis;
-            tenguButtons.forEach(btn => btn.classList.remove('active'));
-            // ▼▼▼【修正点】この一行に構文エラーがありました ▼▼▼
-            const buttonId = (axis === 'Free') ? 'free-btn' : `${axis.toLowerCase()}-tengu-btn`;
-            document.getElementById(buttonId).classList.add('active');
-        }
-
-        function snapToViewpoint(targetPosition) {
-            const start = camera.position.clone();
-            let alpha = 0;
-            function animateSnap() {
-                alpha += 0.05;
-                if (alpha > 1) alpha = 1;
-                camera.position.lerpVectors(start, targetPosition, alpha);
-                if (alpha < 1) requestAnimationFrame(animateSnap);
-            }
-            animateSnap();
-        }
-
-        let highlightTimer;
-        function showHighlight(message, duration = 1000) {
-            uiElements.angleHighlightDiv.textContent = message;
-            uiElements.angleHighlightDiv.style.opacity = '1';
-            if (highlightTimer) clearTimeout(highlightTimer);
-            highlightTimer = setTimeout(() => { uiElements.angleHighlightDiv.style.opacity = '0'; }, duration);
-        }
-
         function updateInfoPanel() {
             const pos = camera.position;
             const azimuth = (Math.atan2(pos.x, pos.z) * (180 / Math.PI) + 360) % 360;
             const polar = Math.acos(pos.y / pos.length()) * (180 / Math.PI);
             uiElements.infoAngle.textContent = `${azimuth.toFixed(1)}° / ${polar.toFixed(1)}°`;
+        }
+        
+        // B.1. SSV計算ロジック
+        function updateSSV() {
+            const deltaTime = clock.getDelta();
+            const speed = camera.position.distanceTo(lastCameraPosition) / deltaTime;
+            lastCameraPosition.copy(camera.position);
 
-            let interpretationText = "---";
-            if (currentEmotionKey && INTERPRETATION_MAP[currentEmotionKey]) {
-                const interpretations = INTERPRETATION_MAP[currentEmotionKey];
-                let found = false;
-                for (const angle in interpretations) {
-                    if (Math.abs(azimuth - parseInt(angle)) < 10) {
-                        interpretationText = interpretations[angle];
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) uiElements.infoInterpretation.textContent = "---";
-                else uiElements.infoInterpretation.textContent = interpretationText;
+            const stabilityBonus = Math.max(0, 60 - (speed * 10));
+            ssv = 32 + stabilityBonus;
+
+            uiElements.infoSsv.textContent = ssv.toFixed(2);
+            
+            // B.3. 閾値による警告
+            if (ssv < 54) {
+                uiElements.infoSsv.className = 'warning';
+                uiElements.infoSsv.textContent += ' - 思考力低下';
             } else {
-                uiElements.infoInterpretation.textContent = "---";
-            }
-
-            const proximity = 5;
-            if (Math.abs(azimuth - 90) < proximity || Math.abs(azimuth - 270) < proximity) {
-                showHighlight("90°の倍数：認知と空間の基礎単位", 1500);
-            } else if (azimuth > proximity && Math.abs(azimuth-360) > proximity && (azimuth % 30 < proximity || Math.abs(azimuth % 30 - 30) < proximity)) {
-                showHighlight("30°の倍数：物質の基礎単位");
+                uiElements.infoSsv.className = 'normal';
+                uiElements.infoSsv.textContent += ' - 正常';
             }
         }
         
-        function applyDistortion() {
+        function applyEffects() {
+             const time = Date.now() * 0.005;
+             // A.2. エーテルの表現 (明滅・反射)
+             alzarHexagon.material.emissive.setHSL((time % 100) / 100, 0.8, 0.5);
+             alzarHexagon.rotation.x = time * 0.2;
+             alzarHexagon.rotation.y = time * 0.3;
+
+             // B.3 & C.3 ひずみエフェクト
+             let distortionAmount = 0.02;
+             if(ssv < 54) {
+                 distortionAmount = 0.1; // SSV低下で歪みを増強
+             }
+
              if (isDistorting) {
-                const time = Date.now() * 0.01;
-                mainObject.scale.x = 1 + Math.sin(time) * 0.02;
-                mainObject.scale.y = 1 + Math.cos(time) * 0.02;
-            } else { mainObject.scale.set(1, 1, 1); }
+                mainObject.scale.x = 1 + Math.sin(time*5) * distortionAmount;
+                mainObject.scale.y = 1 + Math.cos(time*5) * distortionAmount;
+            } else {
+                mainObject.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
+            }
         }
 
         function onWindowResize() {
@@ -244,7 +201,8 @@
             requestAnimationFrame(animate);
             controls.update();
             updateInfoPanel();
-            applyDistortion();
+            updateSSV();
+            applyEffects();
             renderer.render(scene, camera);
         }
         
