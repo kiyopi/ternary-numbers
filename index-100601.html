@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>座標キューヲメンデ変換プロトタイプ (フェーズ3)</title>
+    <title>座標キューヲメンデ変換プロトタイプ (最終版 フェーズ4)</title>
     <style>
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #121212; color: #e0e0e0; overflow: hidden; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #ui-panel { position: absolute; top: 20px; right: 20px; background-color: rgba(30, 30, 30, 0.85); padding: 20px; border-radius: 8px; border-left: 5px solid #bb86fc; width: 340px; display: flex; flex-direction: column; gap: 15px; }
+        #ui-panel { position: absolute; top: 20px; right: 20px; background-color: rgba(30, 30, 30, 0.85); padding: 20px; border-radius: 8px; border-left: 5px solid #bb86fc; width: 340px; display: flex; flex-direction: column; gap: 15px; max-height: calc(100vh - 40px); overflow-y: auto;}
         h1, h2 { margin-top: 0; color: #bb86fc; font-size: 1.2em; border-bottom: 1px solid #444; padding-bottom: 10px; }
         .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .btn { padding: 10px; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 0.9em; transition: all 0.2s; background-color: #333; color: #eee;}
@@ -16,12 +16,13 @@
         #anger-btn.active { background-color: #ffff00; color: black; border-color: #ffff00; }
         #sad-btn.active { background-color: #4488ff; color: white; border-color: #4488ff; }
         #fun-btn.active { background-color: #555; color: white; border-color: #555; }
+        .tengu-btn.active { background-color: #03dac6; color: black; border-color: #03dac6; }
         .info-section { background-color: #2a2a2a; padding: 15px; border-radius: 4px; }
         .info-item { margin-bottom: 12px; }
         .info-item:last-child { margin-bottom: 0; }
         .info-item label { font-weight: bold; color: #03dac6; display: block; font-size: 0.9em;}
-        .info-item span { font-size: 1.1em; min-height: 1.2em; display: inline-block; }
-        .value-emphasis { font-size: 1.4em; font-weight: bold; }
+        .info-item span, .matrix-display { font-size: 1.1em; min-height: 1.2em; display: inline-block; word-wrap: break-word; }
+        .matrix-display { font-family: 'Courier New', Courier, monospace; line-height: 1.4; font-size: 0.9em; }
     </style>
 </head>
 <body>
@@ -37,17 +38,31 @@
             </div>
         </section>
         <section>
+            <h2>C. 認知軸 (Tengu)</h2>
+            <div class="button-group" id="tengu-btn-group">
+                <button id="x-tengu-btn" class="btn tengu-btn" data-axis="X">X-tengu</button>
+                <button id="y-tengu-btn" class="btn tengu-btn" data-axis="Y">Y-tengu</button>
+                <button id="z-tengu-btn" class="btn tengu-btn" data-axis="Z">Z-tengu</button>
+                <button id="free-btn" class="btn tengu-btn active" data-axis="FREE">Free</button>
+            </div>
+        </section>
+        <section>
             <h2>C. 苔tengu視点切替</h2>
             <div class="button-group">
                  <button id="nimou-btn" class="btn">二芒星視点</button>
                  <button id="sanmou-btn" class="btn">三芒星視点</button>
             </div>
         </section>
-        <div id="output-console" class="info-section">
-             <div class="info-item"><label>感情の数値: 【体内純正律】</label><span class="value-emphasis" id="info-v-true">--</span></div>
+        <div id="output-console-1" class="info-section">
              <div class="info-item"><label>I. 感情の数値: 【14%認知増し】</label><span class="value-emphasis" id="info-v-observed">--</span></div>
-             <div class="info-item"><label>波動パラメータ: 30進数乗数回転</label><span id="info-rotation">--</span></div>
-             <div class="info-item"><label>現在の視点角度 (方位角 / 仰角):</label><span id="info-angle">---</span></div>
+             <div class="info-item"><label>II. 波動パラメータ: 30進数乗数回転</label><span id="info-rotation">--</span></div>
+        </div>
+        <div id="output-console-2" class="info-section">
+            <h3>III. 立体演算情報 (3進数データ)</h3>
+            <div class="info-item"><label>1. 現在の視点角度 (方位角 / 仰角):</label><span id="info-angle">---</span></div>
+            <div class="info-item"><label>2. 立体演算行列 (Rotation Matrix):</label><div id="info-matrix" class="matrix-display"></div></div>
+            <div class="info-item"><label>3. 観測対象の3D座標 (XYZ):</label><span id="info-coords">---</span></div>
+            <div class="info-item"><label>4. 使用中の認知軸:</label><span id="info-axis">Free</span></div>
         </div>
     </div>
 
@@ -64,9 +79,10 @@
         // --- UI要素 ---
         const ui = {
             canvas: document.getElementById('three-canvas'), emotionBtnGroup: document.getElementById('emotion-btn-group'),
-            nimouBtn: document.getElementById('nimou-btn'), sanmouBtn: document.getElementById('sanmou-btn'),
-            infoVTrue: document.getElementById('info-v-true'), infoVObserved: document.getElementById('info-v-observed'),
-            infoRotation: document.getElementById('info-rotation'), infoAngle: document.getElementById('info-angle'),
+            tenguBtnGroup: document.getElementById('tengu-btn-group'), nimouBtn: document.getElementById('nimou-btn'), sanmouBtn: document.getElementById('sanmou-btn'),
+            infoVObserved: document.getElementById('info-v-observed'), infoRotation: document.getElementById('info-rotation'),
+            infoAngle: document.getElementById('info-angle'), infoMatrix: document.getElementById('info-matrix'),
+            infoCoords: document.getElementById('info-coords'), infoAxis: document.getElementById('info-axis'),
         };
 
         let scene, camera, renderer, controls, trueObject, observedObject;
@@ -89,18 +105,10 @@
             directionalLight.position.set(3, 5, 4);
             scene.add(directionalLight);
             
-            // B. 視覚的歪みの表現 (2つの球体)
-            const geometry = new THREE.SphereGeometry(1, 64, 64);
-            
-            // 内側の「真の」球体
-            const trueMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.3, shininess: 50 });
-            trueObject = new THREE.Mesh(geometry, trueMaterial);
+            const geometry = new THREE.SphereGeometry(1, 32, 32);
+            trueObject = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.3, shininess: 50 }));
             scene.add(trueObject);
-
-            // 外側の「観測された」輪郭
-            const observedEdges = new THREE.EdgesGeometry(geometry);
-            const observedMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
-            observedObject = new THREE.LineSegments(observedEdges, observedMaterial);
+            observedObject = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }));
             scene.add(observedObject);
 
             setupEventListeners();
@@ -116,7 +124,11 @@
                 e.target.classList.add('active');
             });
             
-            // C. 苔tengu視点切替
+            ui.tenguBtnGroup.addEventListener('click', (e) => {
+                 if(e.target.tagName !== 'BUTTON') return;
+                 setActiveAxis(e.target.dataset.axis);
+            });
+
             ui.nimouBtn.addEventListener('click', () => snapToViewpoint(new THREE.Vector3(3, 3, 3)));
             ui.sanmouBtn.addEventListener('click', () => snapToViewpoint(new THREE.Vector3(-3, 2, 3)));
 
@@ -126,19 +138,17 @@
         function calculate_30_remainder(N, i) { return BigInt(N) ** BigInt(i) % 30n; }
 
         function selectEmotion(emotion) {
-            // A. 観測されたデータの計算
             const vTrue = (emotion.overtone ** 2) % 100;
             const vObserved = vTrue * 1.14;
 
-            ui.infoVTrue.textContent = vTrue.toString().padStart(2, '0');
             ui.infoVObserved.textContent = vObserved.toFixed(2);
 
-            // B. 視覚的歪みの表現 (スケール変更)
             const baseScale = 1.5;
-            trueObject.scale.setScalar(baseScale * (vTrue / 50 + 0.5)); // スケールをvTrueに連動
-            observedObject.scale.setScalar(baseScale * (vObserved / 50 + 0.5)); // スケールをvObservedに連動
+            trueObject.scale.setScalar(baseScale * (vTrue / 100 + 0.5));
+            observedObject.scale.setScalar(baseScale * (vObserved / 100 + 0.5));
+            
+            trueObject.material.color.set(emotion.color);
 
-            // 30進数乗数回転
             if (rotationInterval) clearInterval(rotationInterval);
             let i = 1, sequence = [];
             const N = emotion.overtone;
@@ -151,6 +161,19 @@
             };
             updateRotation();
             rotationInterval = setInterval(updateRotation, 1000);
+        }
+
+        function setActiveAxis(axis) {
+            controls.minAzimuthAngle = -Infinity; controls.maxAzimuthAngle = Infinity;
+            controls.minPolarAngle = 0; controls.maxPolarAngle = Math.PI;
+
+            if (axis === 'X') { controls.minPolarAngle = Math.PI / 2; controls.maxPolarAngle = Math.PI / 2; }
+            if (axis === 'Y') { controls.minAzimuthAngle = 0; controls.maxAzimuthAngle = 0; }
+            if (axis === 'Z') { controls.minPolarAngle = Math.PI / 2; controls.maxPolarAngle = Math.PI / 2; controls.minAzimuthAngle = 0; controls.maxAzimuthAngle = 0; }
+            
+            ui.infoAxis.textContent = axis;
+            ui.tenguBtnGroup.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.btn[data-axis="${axis}"]`).classList.add('active');
         }
 
         function snapToViewpoint(targetPosition) {
@@ -166,14 +189,24 @@
         }
 
         function updateInfoPanel() {
+            // 1. 現在の視点角度
             const pos = camera.position;
             const azimuth = (Math.atan2(pos.x, pos.z) * (180 / Math.PI) + 360) % 360;
             const polar = Math.acos(pos.y / pos.length()) * (180 / Math.PI);
             ui.infoAngle.textContent = `${azimuth.toFixed(1)}° / ${polar.toFixed(1)}°`;
+            
+            // 3. 観測対象の3D座標
+            ui.infoCoords.textContent = `X:${pos.x.toFixed(2)}, Y:${pos.y.toFixed(2)}, Z:${pos.z.toFixed(2)}`;
+            
+            // 2. 立体演算行列
+            const M = camera.matrixWorld.elements;
+            const format = (n) => n.toFixed(2).padStart(5, ' ');
+            ui.infoMatrix.textContent = `[${format(M[0])}, ${format(M[4])}, ${format(M[8])}]
+[${format(M[1])}, ${format(M[5])}, ${format(M[9])}]
+[${format(M[2])}, ${format(M[6])}, ${format(M[10])}]`;
         }
         
         function dynamicDistortion() {
-            // B.2 視点による歪みの変化
             const offset = camera.position.clone().normalize().multiplyScalar(0.05);
             observedObject.position.copy(offset);
         }
@@ -188,7 +221,7 @@
             requestAnimationFrame(animate);
             controls.update();
             updateInfoPanel();
-            dynamicDistortion(); // 歪みを毎フレーム更新
+            dynamicDistortion();
             renderer.render(scene, camera);
         }
         
