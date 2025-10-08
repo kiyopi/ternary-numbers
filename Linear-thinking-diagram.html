@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>思考直線 描画プログラム (三角形6個)</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        canvas {
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="spiral-canvas" width="600" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('spiral-canvas');
+        const ctx = canvas.getContext('2d');
+        const size = canvas.width;
+        
+        // ▼▼▼【修正点】三角形の数を5個に変更しました ▼▼▼
+        const steps = 5; 
+
+        // --- 描画処理 ---
+        function draw() {
+            // 背景を白で塗りつぶし
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, size, size);
+            
+            // 描画の原点をキャンバス中央に移動
+            ctx.save();
+            ctx.translate(size / 2, size / 2);
+
+            const scale = size / 8; // 図形のスケールを調整
+            
+            // 最初の三角形の辺 (長さ1)
+            ctx.beginPath();
+            ctx.moveTo(0,0);
+            ctx.lineTo(scale, 0);
+            ctx.strokeStyle = '#0033cc';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 螺旋を描画
+            for (let i = 1; i <= steps; i++) {
+                const angle = Math.atan(1 / Math.sqrt(i));
+
+                // 三角形を描画
+                const p1x = Math.sqrt(i) * scale;
+
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(p1x, 0);
+                ctx.lineTo(p1x, -scale);
+                ctx.closePath();
+                
+                ctx.strokeStyle = '#0033cc';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // 次の三角形のために座標系を回転
+                ctx.rotate(-angle);
+            }
+            
+            ctx.restore(); 
+        }
+
+        draw();
+    </script>
+
+</body>
+</html>

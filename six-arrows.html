@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6種類の3進数データ（矢印）の視覚化</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 1.8em;
+            color: #303f9f;
+            margin-bottom: 30px;
+        }
+        .arrow-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 1000px;
+        }
+        .arrow-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .dots {
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+        }
+        .dot {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            border: 2px solid #ddd;
+        }
+        .arrow-symbol {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #3f51b5;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>6種類の3進数データ（矢印）</h1>
+    <div class="arrow-container" id="arrow-container">
+        </div>
+    
+    <script>
+        // --- 矢印の定義 ---
+        // 資料「3進数の世界.pdf」に基づき、6種類の矢印の色点を定義します
+        const ARROWS_DATA = [
+            { id: 1, dots: ['red', 'blue', 'red'] },
+            { id: 2, dots: ['black', 'red', 'red'] },
+            { id: 3, dots: ['blue', 'red', 'black'] },
+            { id: 4, dots: ['red', 'black', 'blue'] },
+            { id: 5, dots: ['black', 'black', 'black'] },
+            { id: 6, dots: ['blue', 'blue', 'blue'] }
+        ];
+
+        const container = document.getElementById('arrow-container');
+
+        // --- 描画ロジック ---
+        ARROWS_DATA.forEach(arrowData => {
+            // カード要素を作成
+            const card = document.createElement('div');
+            card.className = 'arrow-card';
+
+            // 3つの色点を作成
+            const dotsDiv = document.createElement('div');
+            dotsDiv.className = 'dots';
+            arrowData.dots.forEach(color => {
+                const dotSpan = document.createElement('span');
+                dotSpan.className = 'dot';
+                dotSpan.style.backgroundColor = color;
+                dotsDiv.appendChild(dotSpan);
+            });
+
+            // 矢印記号を作成
+            const arrowSymbol = document.createElement('div');
+            arrowSymbol.className = 'arrow-symbol';
+            // 資料では矢印の形が様々ですが、ここでは統一した記号で表現します
+            arrowSymbol.textContent = '↓'; 
+
+            // カードに要素を追加
+            card.appendChild(dotsDiv);
+            card.appendChild(arrowSymbol);
+
+            // コンテナにカードを追加
+            container.appendChild(card);
+        });
+
+    </script>
+</body>
+</html>

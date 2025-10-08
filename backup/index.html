@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Cognitive Resonator v6.0 (Refactored)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="webgl-warning" style="display: none; text-align: center; padding: 20px;">
+        <h1>エラー</h1>
+        <p>お使いのブラウザはWebGLをサポートしていないか、無効になっています。<br>このアプリケーションを実行できません。</p>
+    </div>
+
+    <div id="flash-overlay"></div>
+    <div id="emotion-info"></div>
+
+    <div id="hud-container">
+        <div id="controls">
+            <div id="kun-btn" class="btn active" tabindex="0" aria-label="訓読みモードに切り替え">訓読み (12)</div>
+            <div id="on-btn" class="btn" tabindex="0" aria-label="音読みモードに切り替え">音読み (16)</div>
+        </div>
+        <div id="commentary-panel">
+            <h3 id="commentary-title"></h3>
+            <p id="commentary-text"></p>
+        </div>
+        <div class="info-grid">
+            <div id="mode-info"></div>
+            <div id="cycle-info"></div>
+            <div id="angle-info"></div>
+            <div id="color-info"></div>
+        </div>
+    </div>
+
+    <div id="guide-panel">
+        <p id="guide-text"></p>
+        <button id="guide-button">次へ</button>
+    </div>
+
+    <script type="importmap">
+    { "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    } }
+    </script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>

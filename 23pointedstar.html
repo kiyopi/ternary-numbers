@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>二芒星／三芒星 洞の値計算機</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            width: 90%;
+            max-width: 500px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            border-top: 5px solid #3f51b5;
+        }
+        .control-group {
+            margin-bottom: 25px;
+        }
+        .control-group h2 {
+            font-size: 1.2em;
+            color: #3f51b5;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+        }
+        .btn {
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #fff;
+            color: #333;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            background-color: #e8eaf6;
+        }
+        .btn.active {
+            background-color: #3f51b5;
+            color: white;
+            font-weight: bold;
+            border-color: #3f51b5;
+        }
+        #display-panel {
+            margin-top: 30px;
+            background-color: #e8eaf6;
+            padding: 25px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        #display-panel .label {
+            font-size: 1em;
+            color: #5c6bc0;
+        }
+        #display-panel .value {
+            font-size: 3.5em;
+            font-weight: bold;
+            color: #1a237e;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="control-group">
+            <h2>1. 感情（振動数）を選択</h2>
+            <div class="button-grid" id="emotion-buttons">
+                <button class="btn" data-emotion="joy">喜 (15)</button>
+                <button class="btn" data-emotion="anger">怒 (5)</button>
+                <button class="btn" data-emotion="sad">哀 (3)</button>
+                <button class="btn" data-emotion="fun">楽 (9)</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <h2>2. 認知モードを選択</h2>
+            <div class="button-grid" id="mode-buttons">
+                <button class="btn active" data-mode="nimou">【二芒星】</button>
+                <button class="btn" data-mode="sanmou">【三芒星】</button>
+            </div>
+        </div>
+
+        <div id="display-panel">
+            <div class="label" id="result-label">洞の値 (Hollow Value)</div>
+            <div class="value" id="result-value">--</div>
+        </div>
+    </div>
+    
+    <script>
+        // --- 1. 基礎データ ---
+        const EMOTIONS = { joy: 15, anger: 5, sad: 3, fun: 9 };
+        
+        let currentEmotion = null;
+        let currentMode = 'nimou';
+
+        // --- UI要素 ---
+        const emotionButtons = document.getElementById('emotion-buttons');
+        const modeButtons = document.getElementById('mode-buttons');
+        const resultValue = document.getElementById('result-value');
+        const resultLabel = document.getElementById('result-label');
+        
+        // --- 3. 計算ロジック ---
+        function calculateHollowValue() {
+            if (!currentEmotion) {
+                resultValue.textContent = '--';
+                return;
+            }
+
+            const N = EMOTIONS[currentEmotion];
+            let value;
+
+            if (currentMode === 'nimou') {
+                // A. 二芒星モード計算ロジック
+                value = (N % 3) * 10 + N;
+                resultLabel.textContent = `洞の値 (二芒星) = (${N} mod 3) * 10 + ${N}`;
+            } else {
+                // B. 三芒星モード計算ロジック
+                value = (N ** 2) % 100;
+                resultLabel.textContent = `洞の値 (三芒星) = (${N}²) mod 100`;
+            }
+
+            resultValue.textContent = value.toString().padStart(2, '0');
+        }
+
+        // --- イベントリスナー ---
+        emotionButtons.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                emotionButtons.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active');
+                currentEmotion = e.target.dataset.emotion;
+                calculateHollowValue();
+            }
+        });
+
+        modeButtons.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                modeButtons.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active');
+                currentMode = e.target.dataset.mode;
+                calculateHollowValue();
+            }
+        });
+    </script>
+</body>
+</html>

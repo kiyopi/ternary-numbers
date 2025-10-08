@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>9つの水分子共鳴順位グループ (最終空間定義版)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px;
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 2em;
+            color: #303f9f;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+        .main-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(650px, 1fr));
+            gap: 40px;
+            width: 100%;
+            max-width: 1400px;
+        }
+        .group-card {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+            border-top: 5px solid #3f51b5;
+        }
+        .group-card h2 {
+            font-size: 1.4em;
+            color: #5c6bc0;
+            margin-top: 0;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+            text-align: center;
+        }
+        .hex-pair {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        .hexagon-wrapper {
+            position: relative;
+            width: 300px;
+            height: 300px;
+        }
+        .hexagon-wrapper svg {
+            width: 100%;
+            height: 100%;
+        }
+        .note-label {
+            position: absolute;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #333;
+            transform: translate(-50%, -50%);
+        }
+        .hexagon-label {
+            text-align: center;
+            font-size: 1em;
+            color: #666;
+            font-weight: bold;
+            margin-top: -15px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>9つの水分子共鳴順位グループ</h1>
+
+    <div class="main-container" id="main-container">
+    </div>
+
+    <script>
+        const SVG_CENTER_X = 150;
+        const SVG_CENTER_Y = 150;
+        const HEX_RADIUS = 120;
+        const LABEL_OFFSET = 1.18;
+
+        // ご指示の空間定義（時計回り）に基づき、描画用の角度（ラジアン）をマッピング
+        const ANGLE_MAP = {
+            360: Math.PI / 2,                // Top
+            60:  Math.PI / 6,                // Top-right
+            120: -Math.PI / 6,               // Bottom-right
+            180: -Math.PI / 2,               // Bottom
+            240: -5 * Math.PI / 6,           // Bottom-left
+            300: 5 * Math.PI / 6             // Top-left
+        };
+        
+        // 表の列の順序
+        const TABLE_DEGREES = [360, 300, 240, 180, 120, 60];
+
+        // 9つのグループすべての音程データを定義 (資料の表通り)
+        const GROUPS_DATA = [
+            { name: "G(311) グループ",   hex1: ['E', 'C', 'D', 'Bb', 'F#', 'G#'], hex2: ['F', 'D#', 'C#', 'B', 'A', 'G'] },
+            { name: "E(111) グループ",   hex1: ['C', 'D', 'E', 'F#', 'G#', 'Bb'], hex2: ['C#', 'D#', 'F', 'G', 'A', 'B'] },
+            { name: "D# (111) グループ", hex1: ['E', 'C', 'D', 'Bb', 'F#', 'G#'], hex2: ['F', 'C#', 'D#', 'B', 'G', 'A'] },
+            { name: "F (513) グループ",   hex1: ['E', 'C', 'D', 'Bb', 'F#', 'G#'], hex2: ['C#', 'F', 'D#', 'G', 'B', 'A'] },
+            { name: "Bb (333) グループ",  hex1: ['E', 'C', 'D', 'Bb', 'F#', 'G#'], hex2: ['C#', 'D#', 'F', 'G', 'A', 'B'] },
+            { name: "A(111) グループ",   hex1: ['E', 'D', 'C', 'Bb', 'G#', 'F#'], hex2: ['F', 'D#', 'C#', 'B', 'A', 'G'] },
+            { name: "G#(131) グループ",  hex1: ['E', 'C', 'D', 'Bb', 'F#', 'G#'], hex2: ['D#', 'C#', 'F', 'A', 'G', 'B'] },
+            { name: "D (111) グループ",   hex1: ['D', 'E', 'C', 'G#', 'Bb', 'F#'], hex2: ['D#', 'F', 'C#', 'A', 'B', 'G'] },
+            { name: "F#(511) グループ",  hex1: ['E', 'C', 'D', 'Bb', 'F#', 'G#'], hex2: ['D#', 'F', 'C#', 'A', 'B', 'G'] }
+        ];
+
+        const mainContainer = document.getElementById('main-container');
+
+        function createHexagon(title, color, notes) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'hexagon-wrapper';
+
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("viewBox", `0 0 ${SVG_CENTER_X * 2} ${SVG_CENTER_Y * 2}`);
+
+            // 六角形のパスを描画
+            const points = Object.values(ANGLE_MAP).map(angle => {
+                const x = SVG_CENTER_X + HEX_RADIUS * Math.cos(angle);
+                const y = SVG_CENTER_Y - HEX_RADIUS * Math.sin(angle);
+                return `${x},${y}`;
+            }).join(' ');
+
+            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            polygon.setAttribute("points", points);
+            polygon.setAttribute("fill", "none");
+            polygon.setAttribute("stroke", color);
+            polygon.setAttribute("stroke-width", "3");
+            svg.appendChild(polygon);
+            wrapper.appendChild(svg);
+
+            // 音階ラベルを描画
+            notes.forEach((note, index) => {
+                const degree = TABLE_DEGREES[index];
+                const angle = ANGLE_MAP[degree];
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'note-label';
+                labelDiv.textContent = note;
+                labelDiv.style.left = `${SVG_CENTER_X + HEX_RADIUS * LABEL_OFFSET * Math.cos(angle)}px`;
+                labelDiv.style.top = `${SVG_CENTER_Y - HEX_RADIUS * LABEL_OFFSET * Math.sin(angle)}px`;
+                wrapper.appendChild(labelDiv);
+            });
+            
+            const label = document.createElement('div');
+            label.className = 'hexagon-label';
+            label.textContent = title;
+            wrapper.appendChild(label);
+            
+            return wrapper;
+        }
+
+        GROUPS_DATA.forEach(groupData => {
+            const groupCard = document.createElement('div');
+            groupCard.className = 'group-card';
+
+            const groupTitle = document.createElement('h2');
+            groupTitle.textContent = groupData.name;
+            groupCard.appendChild(groupTitle);
+
+            const hexPairDiv = document.createElement('div');
+            hexPairDiv.className = 'hex-pair';
+            
+            hexPairDiv.appendChild(createHexagon('六角形1', '#4488ff', groupData.hex1));
+            hexPairDiv.appendChild(createHexagon('六角形2', '#ff4444', groupData.hex2));
+
+            groupCard.appendChild(hexPairDiv);
+            mainContainer.appendChild(groupCard);
+        });
+
+    </script>
+</body>
+</html>

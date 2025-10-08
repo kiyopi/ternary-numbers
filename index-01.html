@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>【最終統合版 v18.1】座標キューヲメンデ変換シミュレータ</title>
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
+        #main-container { display: flex; flex-grow: 1; }
+        #controls-panel { width: 380px; padding: 20px; background-color: #1e1e1e; box-shadow: 2px 0 5px rgba(0,0,0,0.5); z-index: 10; display: flex; flex-direction: column; border-right: 1px solid #333; overflow-y: auto;}
+        h1 { font-size: 1.5em; margin-top: 0; color: #bb86fc; }
+        p { font-size: 0.9em; line-height: 1.6; color: #b0b0b0; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #bb86fc; }
+        input[type="number"] { width: 100%; padding: 8px; box-sizing: border-box; background-color: #333; border: 1px solid #555; border-radius: 4px; color: #e0e0e0; }
+        .info-section { margin-top: 20px; padding: 15px; background-color: #2a2a2a; border-radius: 4px; }
+        .info-section h3 { margin-top: 0; font-size: 1.2em; padding-bottom: 10px; border-bottom: 1px solid #444;}
+        .info-section p { margin: 10px 0; font-size: 1em; word-wrap: break-word; line-height: 1.5; }
+        #calc-process { border-left: 5px solid #03dac6; }
+        #calc-process h3 { color: #03dac6; }
+        #legend { border-left: 5px solid #bb86fc; }
+        #legend h3 { color: #bb86fc; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
+        .legend-color-box { width: 20px; height: 20px; margin-right: 10px; border: 1px solid #555; }
+        #canvas-container { flex-grow: 1; position: relative; }
+        #three-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+
+    <div id="main-container">
+        <div id="controls-panel">
+            <h1>動的幾何学モデル</h1>
+            <p>入力された2つの辺の長さから、平面対角線（円の直径）と立体対角線が構築されるプロセスをシミュレートします。</p>
+
+            <div class="input-group">
+                <label for="sideA">辺 A の長さ (例: 1.414)</label>
+                <input type="number" id="sideA" value="2">
+            </div>
+            <div class="input-group">
+                <label for="sideB">辺 B の長さ (例: 1)</label>
+                <input type="number" id="sideB" value="2">
+            </div>
+            
+            <div id="calc-process" class="info-section">
+                <h3>計算結果</h3>
+                <p id="info-diag-2d"></p>
+                <p id="info-diag-3d"></p>
+            </div>
+            
+            <div id="legend" class="info-section">
+                <h3>凡例</h3>
+                <div class="legend-item"><div class="legend-color-box" style="background-color: #ffff00;"></div><span>実体（立体の対角線）</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="background-color: #aaaaaa;"></div><span>構造線</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="border: 2px solid #00dd00;"></div><span>苔tengu (水平円)</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="border: 2px solid #ff4444;"></div><span>朱tengu (前額円)</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="border: 2px solid #4488ff;"></div><span>空tengu (垂直円)</span></div>
+            </div>
+        </div>
+        <div id="canvas-container">
+            <canvas id="three-canvas"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        const sideAInput = document.getElementById('sideA');
+        const sideBInput = document.getElementById('sideB');
+        const canvas = document.getElementById('three-canvas');
+        const canvasContainer = document.getElementById('canvas-container');
+        
+        const infoDiag2d = document.getElementById('info-diag-2d');
+        const infoDiag3d = document.getElementById('info-diag-3d');
+
+        let scene, camera, renderer, controls;
+        let simulationGroup;
+        
+        const UNSEEN_DIM = 2;
+        const TENGU_MAP = {
+            koke: { color: 0x00dd00 },
+            shu:  { color: 0xff4444 },
+            kuu:  { color: 0x4488ff },
+        };
+
+        function createLabel(text, color = '#ffffff', size = 0.5) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            const fontSize = 64;
+            context.font = `Bold ${fontSize}px Arial`;
+            const metrics = context.measureText(text);
+            
+            canvas.width = metrics.width;
+            canvas.height = fontSize * 1.2;
+            context.font = `Bold ${fontSize}px Arial`;
+            context.fillStyle = color;
+            context.fillText(text, 0, fontSize);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(size * (canvas.width / fontSize), size * (canvas.height / fontSize), 1.0);
+            return sprite;
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            camera = new THREE.PerspectiveCamera(50, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+            camera.position.set(4, 4, 6);
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(3, 5, 4);
+            scene.add(directionalLight);
+            
+            simulationGroup = new THREE.Group();
+            scene.add(simulationGroup);
+
+            [sideAInput, sideBInput].forEach(input => input.addEventListener('input', updateSimulation));
+            window.addEventListener('resize', onWindowResize);
+
+            updateSimulation();
+            animate();
+        }
+
+        function updateSimulation() {
+            const sideA = parseFloat(sideAInput.value) || 0;
+            const sideB = parseFloat(sideBInput.value) || 0;
+            
+            while(simulationGroup.children.length > 0){ 
+                simulationGroup.remove(simulationGroup.children[0]); 
+            }
+
+            const diag2dLength = Math.sqrt(sideA**2 + sideB**2);
+            const diag3dLength = Math.sqrt(sideA**2 + sideB**2 + UNSEEN_DIM**2);
+            
+            infoDiag2d.innerHTML = `平面の対角線 (円の直径): ${diag2dLength.toFixed(3)}`;
+            infoDiag3d.innerHTML = `<strong>立体の対角線: ${diag3dLength.toFixed(3)}</strong>`;
+            
+            const radius = diag2dLength / 2;
+            const circleGeom = new THREE.CircleGeometry(radius, 64);
+            const circleEdges = new THREE.EdgesGeometry(circleGeom);
+
+            const kokeCircle = new THREE.LineSegments(circleEdges, new THREE.LineBasicMaterial({ color: TENGU_MAP.koke.color }));
+            kokeCircle.rotation.x = -Math.PI / 2;
+            simulationGroup.add(kokeCircle);
+
+            const shuCircle = new THREE.LineSegments(circleEdges.clone(), new THREE.LineBasicMaterial({ color: TENGU_MAP.shu.color }));
+            simulationGroup.add(shuCircle);
+
+            const kuuCircle = new THREE.LineSegments(circleEdges.clone(), new THREE.LineBasicMaterial({ color: TENGU_MAP.kuu.color }));
+            kuuCircle.rotation.y = Math.PI / 2;
+            simulationGroup.add(kuuCircle);
+
+            const p0 = new THREE.Vector3(-sideA/2, 0, -sideB/2);
+            const p2 = new THREE.Vector3(sideA/2, 0, sideB/2);
+            
+            const rectGeom = new THREE.BufferGeometry().setFromPoints([
+                p0, new THREE.Vector3(p2.x, 0, p0.z), p2, new THREE.Vector3(p0.x, 0, p2.z), p0
+            ]);
+            simulationGroup.add(new THREE.Line(rectGeom, new THREE.LineBasicMaterial({ color: 0x555555 })));
+            
+            const diag2dGeom = new THREE.BufferGeometry().setFromPoints([p0, p2]);
+            const diag2d = new THREE.Line(diag2dGeom, new THREE.LineBasicMaterial({ color: 0xaaaaaa }));
+            simulationGroup.add(diag2d);
+            
+            // 平面対角線のラベル
+            const diag2dLabel = createLabel(diag2dLength.toFixed(2), '#aaaaaa');
+            diag2dLabel.position.copy(p0).add(p2).multiplyScalar(0.5).add(new THREE.Vector3(0, 0.2, 0));
+            simulationGroup.add(diag2dLabel);
+
+            const p_alzar = new THREE.Vector3(p2.x, UNSEEN_DIM, p2.z);
+            const electron = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+            electron.position.copy(p_alzar);
+            simulationGroup.add(electron);
+            
+            const connectionLine = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([p2, p_alzar]),
+                new THREE.LineDashedMaterial({ color: 0xaaaaaa, dashSize: 0.2, gapSize: 0.1 })
+            );
+            connectionLine.computeLineDistances();
+            simulationGroup.add(connectionLine);
+
+            const diag3d = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([p0, p_alzar]),
+                new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 })
+            );
+            simulationGroup.add(diag3d);
+
+            // 立体対角線のラベル
+            const diag3dLabel = createLabel(diag3dLength.toFixed(2), '#ffff00');
+            diag3dLabel.position.copy(p0).add(p_alzar).multiplyScalar(0.5).add(new THREE.Vector3(0.2, 0.2, 0));
+            simulationGroup.add(diag3dLabel);
+        }
+
+        function onWindowResize() {
+            camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>【最終統合版 v16】座標キューヲメンデ変換シミュレータ</title>
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
+        #main-container { display: flex; flex-grow: 1; }
+        #controls-panel { width: 380px; padding: 20px; background-color: #1e1e1e; box-shadow: 2px 0 5px rgba(0,0,0,0.5); z-index: 10; display: flex; flex-direction: column; border-right: 1px solid #333; overflow-y: auto;}
+        h1 { font-size: 1.5em; margin-top: 0; color: #bb86fc; }
+        p { font-size: 0.9em; line-height: 1.6; color: #b0b0b0; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #bb86fc; }
+        input[type="number"] { width: 100%; padding: 8px; box-sizing: border-box; background-color: #333; border: 1px solid #555; border-radius: 4px; color: #e0e0e0; }
+        button { width: 100%; padding: 10px; background-color: #6200ee; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1em; transition: background-color 0.3s; }
+        button:hover { background-color: #3700b3; }
+        .info-section { margin-top: 20px; padding: 15px; background-color: #2a2a2a; border-radius: 4px; }
+        .info-section h3 { margin-top: 0; font-size: 1.2em; padding-bottom: 10px; border-bottom: 1px solid #444;}
+        .info-section p { margin: 10px 0; font-size: 1em; word-wrap: break-word; line-height: 1.5; }
+        #calc-process { border-left: 5px solid #03dac6; }
+        #calc-process h3 { color: #03dac6; }
+        .step-label { font-weight: bold; color: #bb86fc; font-size: 0.9em; }
+        #legend { border-left: 5px solid #bb86fc; }
+        #legend h3 { color: #bb86fc; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
+        .legend-color-box { width: 20px; height: 20px; margin-right: 10px; border: 1px solid #555; }
+        #canvas-container { flex-grow: 1; position: relative; }
+        #three-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+
+    <div id="main-container">
+        <div id="controls-panel">
+            <h1>座標キューヲメンデ変換シミュレータ</h1>
+            <p>世界の基本構造（静的）の中で、ユーザーの観測（動的）がどのような値を生むかをシミュレートします。</p>
+
+            <div class="input-group">
+                <label for="x-coord">目視座標 X</label>
+                <input type="number" id="x-coord" value="4">
+            </div>
+            <div class="input-group">
+                <label for="y-coord">目視座標 Y</label>
+                <input type="number" id="y-coord" value="3">
+            </div>
+            
+            <button id="calculate-btn">計算</button>
+
+            <div id="calc-process" class="info-section">
+                <h3>観測結果の算出プロセス</h3>
+                <p><span class="step-label">Step 1: 平面上の観測値</span><br>
+                   <span id="info-step1-desc"></span></p>
+                <p><span class="step-label">Step 2: 立体表記への変換</span><br>
+                   <span id="info-step2-base"></span><br>
+                   <span id="info-step2-height"></span></p>
+                <p><span class="step-label">Step 3: 真の立体の算出</span><br>
+                   <strong><span id="info-step3-hypotenuse"></span></strong></p>
+            </div>
+            
+            <div id="legend" class="info-section">
+                <h3>凡例</h3>
+                <div class="legend-item"><div class="legend-color-box" style="background-color: #ffff00;"></div><span>基準の実体 (真理)</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="background-color: #aaaaaa;"></div><span>基準の構造線</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="border: 2px solid #00dd00;"></div><span>苔tengu (水平円)</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="border: 2px solid #ff4444;"></div><span>朱tengu (前額円)</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="border: 2px solid #4488ff;"></div><span>空tengu (垂直円)</span></div>
+            </div>
+        </div>
+        <div id="canvas-container">
+            <canvas id="three-canvas"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        const xInput = document.getElementById('x-coord');
+        const yInput = document.getElementById('y-coord');
+        const calculateBtn = document.getElementById('calculate-btn');
+        const canvas = document.getElementById('three-canvas');
+        const canvasContainer = document.getElementById('canvas-container');
+        
+        const infoStep1Desc = document.getElementById('info-step1-desc');
+        const infoStep2Base = document.getElementById('info-step2-base');
+        const infoStep2Height = document.getElementById('info-step2-height');
+        const infoStep3Hypotenuse = document.getElementById('info-step3-hypotenuse');
+
+        let scene, camera, renderer, controls;
+
+        const Z_DIMENSION = 2; // 観測不可能な次元の固定値
+        const TENGU_MAP = {
+            koke: { color: 0x00dd00 },
+            shu: { color: 0xff4444 },
+            kuu: { color: 0x4488ff },
+        };
+
+        function toCustomNotation(num) {
+            if (Math.abs(num - Math.round(num)) < 1e-9) return `${Math.round(num)}√1√1`;
+            const squared = num * num;
+            if (Math.abs(squared - Math.round(squared)) < 1e-9) return `1√${Math.round(squared)}√1`;
+            return `1√${squared.toFixed(2)}√1`;
+        }
+        
+        function createStaticInfrastructure() {
+            const group = new THREE.Group();
+            const planeOpacity = 0.1;
+            const planeMaterialTemplate = { transparent: true, opacity: planeOpacity, side: THREE.DoubleSide };
+            const sphereRadius = Math.sqrt(3);
+            const circleRadius = Math.sqrt(2);
+
+            // Tengu面
+            const kokePlane = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshBasicMaterial({ ...planeMaterialTemplate, color: TENGU_MAP.koke.color }));
+            kokePlane.rotation.x = -Math.PI / 2;
+            group.add(kokePlane);
+            
+            const shuPlane = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshBasicMaterial({ ...planeMaterialTemplate, color: TENGU_MAP.shu.color }));
+            group.add(shuPlane);
+            
+            const kuuPlane = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshBasicMaterial({ ...planeMaterialTemplate, color: TENGU_MAP.kuu.color }));
+            kuuPlane.rotation.y = Math.PI / 2;
+            group.add(kuuPlane);
+            
+            // 円
+            const circleGeom = new THREE.CircleGeometry(circleRadius, 64);
+            const circleEdges = new THREE.EdgesGeometry(circleGeom);
+
+            const kokeCircle = new THREE.LineSegments(circleEdges, new THREE.LineBasicMaterial({ color: TENGU_MAP.koke.color }));
+            kokeCircle.rotation.x = -Math.PI / 2;
+            group.add(kokeCircle);
+            
+            const shuCircle = new THREE.LineSegments(circleEdges.clone(), new THREE.LineBasicMaterial({ color: TENGU_MAP.shu.color }));
+            group.add(shuCircle);
+            
+            const kuuCircle = new THREE.LineSegments(circleEdges.clone(), new THREE.LineBasicMaterial({ color: TENGU_MAP.kuu.color }));
+            kuuCircle.rotation.y = Math.PI / 2;
+            group.add(kuuCircle);
+
+            // 基準対角線 (2√2 と 2√3)
+            const p_start = new THREE.Vector3(0, -1, -1);
+            const p_end = new THREE.Vector3(0, 1, 1);
+            const p_alzar = new THREE.Vector3(2, 1, 1);
+
+            const diag2dGeom = new THREE.BufferGeometry().setFromPoints([p_start, p_end]);
+            const diag2dMat = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
+            group.add(new THREE.Line(diag2dGeom, diag2dMat));
+
+            const diag3dGeom = new THREE.BufferGeometry().setFromPoints([p_start, p_alzar]);
+            const diag3dMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
+            group.add(new THREE.Line(diag3dGeom, diag3dMat));
+            
+            const electron = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+            electron.position.copy(p_alzar);
+            group.add(electron);
+
+            return group;
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            camera = new THREE.PerspectiveCamera(50, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+            camera.position.set(8, 7, 10);
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+            
+            scene.add(createStaticInfrastructure()); // 静的な基準構造を描画
+
+            calculateBtn.addEventListener('click', updateCalculationPanel);
+            window.addEventListener('resize', onWindowResize);
+
+            updateCalculationPanel();
+            animate();
+        }
+
+        function updateCalculationPanel() {
+            const x = parseFloat(xInput.value) || 0;
+            const y = parseFloat(yInput.value) || 0;
+            const z = Z_DIMENSION;
+
+            const baseLength = Math.sqrt(x*x + y*y);
+            const heightLength = z;
+            const hypotenuseLength = Math.sqrt(x*x + y*y + z*z);
+
+            infoStep1Desc.textContent = `目視座標 (${x}, ${y}) から、平面の基底長 ${baseLength.toFixed(3)} が算出される。`;
+            infoStep2Base.textContent = `基底の立体表記: ${toCustomNotation(baseLength)}`;
+            infoStep2Height.textContent = `高さの立体表記: ${toCustomNotation(heightLength)}`;
+            infoStep3Hypotenuse.textContent = `真の立体の斜辺: ${toCustomNotation(hypotenuseLength)}`;
+        }
+
+        function onWindowResize() {
+            camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>【修正版 v8.3】座標キューヲメンデ変換シミュレータ</title>
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
+        #main-container { display: flex; flex-grow: 1; }
+        #controls-panel { width: 380px; padding: 20px; background-color: #1e1e1e; box-shadow: 2px 0 5px rgba(0,0,0,0.5); z-index: 10; display: flex; flex-direction: column; border-right: 1px solid #333; overflow-y: auto;}
+        h1 { font-size: 1.5em; margin-top: 0; color: #bb86fc; }
+        p { font-size: 0.9em; line-height: 1.6; color: #b0b0b0; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #bb86fc; }
+        input[type="range"] { width: 100%; }
+        .info-section { margin-top: 20px; padding: 15px; background-color: #2a2a2a; border-radius: 4px; }
+        .info-section h3 { margin-top: 0; font-size: 1.2em; padding-bottom: 10px; border-bottom: 1px solid #444;}
+        .info-section p { margin: 10px 0; font-size: 1em; word-wrap: break-word; line-height: 1.5; }
+        .tengu-color-box { display: inline-block; width: 1em; height: 1em; margin-right: 8px; vertical-align: middle; border: 1px solid #555;}
+        #legend { border-left: 5px solid #bb86fc; }
+        #legend h3 { color: #bb86fc; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 8px; }
+        .legend-color-box { width: 20px; height: 20px; margin-right: 10px; border: 1px solid #555; }
+        #canvas-container { flex-grow: 1; position: relative; }
+        #three-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+
+    <div id="main-container">
+        <div id="controls-panel">
+            <h1>思考直線とアルザル電子の軌跡</h1>
+            <p>思考の発展（平面螺旋）に伴い、観測不可能な次元でアルザル電子が描く軌跡をシミュレートします。</p>
+
+            <div class="input-group">
+                <label for="step-slider">思考の発展段階 (2d〜16d)</label>
+                <input type="range" id="step-slider" min="1" max="15" value="5">
+            </div>
+
+            <div id="info-panel" class="info-section">
+                <h3 id="info-title"></h3>
+                <p id="info-sides"></p>
+                <p id="info-hypotenuse"></p>
+                <p id="info-solid-hypotenuse"></p>
+            </div>
+            
+            <div id="legend" class="info-section">
+                <h3>凡例</h3>
+                <div class="legend-item"><div class="legend-color-box" style="background-color: #ffff00;"></div><span>アルザル電子の軌跡</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="background-color: rgba(255, 255, 0, 0.4);"></div><span>3進数の立体 (実体)</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="border: 2px dashed #888;"></div><span>平面の三角形 (影)</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="background-color: #00dd00; opacity: 0.4;"></div><span>苔tengu (水平面)</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="background-color: #ff4444; opacity: 0.4;"></div><span>朱tengu (前額面)</span></div>
+                <div class="legend-item"><div class="legend-color-box" style="background-color: #4488ff; opacity: 0.4;"></div><span>空tengu (垂直面)</span></div>
+            </div>
+        </div>
+        <div id="canvas-container">
+            <canvas id="three-canvas"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        const slider = document.getElementById('step-slider');
+        const canvas = document.getElementById('three-canvas');
+        const canvasContainer = document.getElementById('canvas-container');
+        const infoTitle = document.getElementById('info-title');
+        const infoSides = document.getElementById('info-sides');
+        const infoHypotenuse = document.getElementById('info-hypotenuse');
+        const infoSolidHypotenuse = document.getElementById('info-solid-hypotenuse');
+
+        let scene, camera, renderer, controls;
+        let simulationGroup;
+        
+        const Y_DIMENSION = 0.5;
+        const TENGU_MAP = {
+            1: { name: '苔tengu', color: '#00dd00' },
+            2: { name: '朱tengu', color: '#ff4444' },
+            3: { name: '空tengu', color: '#4488ff' },
+        };
+        const DEFAULT_TENGU = { name: '発展領域', color: '#bb86fc' };
+
+        function toCustomNotation(num) {
+            if (Math.abs(num - Math.round(num)) < 1e-9) return `${Math.round(num)}√1√1`;
+            const squared = num * num;
+            if (Math.abs(squared - Math.round(squared)) < 1e-9) return `1√${Math.round(squared)}√1`;
+            return `1√${squared.toFixed(2)}√1`;
+        }
+        
+        function createTenguPlanes(size) {
+            const planesGroup = new THREE.Group();
+            const planeOpacity = 0.15;
+            const planeMaterialTemplate = { transparent: true, opacity: planeOpacity, side: THREE.DoubleSide };
+
+            const kokePlane = new THREE.Mesh( new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ ...planeMaterialTemplate, color: TENGU_MAP[1].color }) );
+            kokePlane.rotation.x = -Math.PI / 2;
+            planesGroup.add(kokePlane);
+            
+            const shuPlane = new THREE.Mesh( new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ ...planeMaterialTemplate, color: TENGU_MAP[2].color }) );
+            planesGroup.add(shuPlane);
+            
+            const kuuPlane = new THREE.Mesh( new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ ...planeMaterialTemplate, color: TENGU_MAP[3].color }) );
+            kuuPlane.rotation.y = Math.PI / 2;
+            planesGroup.add(kuuPlane);
+
+            return planesGroup;
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            camera = new THREE.PerspectiveCamera(50, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+            camera.position.set(8, 8, 12);
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 10, 5);
+            scene.add(directionalLight);
+            
+            simulationGroup = new THREE.Group();
+            scene.add(simulationGroup);
+            scene.add(createTenguPlanes(12));
+
+            slider.addEventListener('input', updateSimulation);
+            window.addEventListener('resize', onWindowResize);
+
+            updateSimulation();
+            animate();
+        }
+
+        function updateSimulation() {
+            const steps = parseInt(slider.value);
+
+            while(simulationGroup.children.length > 0){ 
+                simulationGroup.remove(simulationGroup.children[0]); 
+            }
+
+            const alzarTrajectoryPoints = [new THREE.Vector3(0, 0, 0)];
+            const planarSpiralPoints = [new THREE.Vector3(0,0,0)];
+            let totalAngle = 0;
+            
+            for (let i = 0; i < steps; i++) {
+                const hypotenuse = Math.sqrt(i + 1);
+                const angleIncrement = Math.atan(1 / hypotenuse);
+                totalAngle += angleIncrement;
+                
+                const nextPoint = new THREE.Vector3(
+                    Math.sqrt(i + 2) * Math.cos(totalAngle),
+                    0,
+                    Math.sqrt(i + 2) * Math.sin(totalAngle)
+                );
+                
+                planarSpiralPoints.push(nextPoint);
+                alzarTrajectoryPoints.push(new THREE.Vector3(nextPoint.x, (i + 1) * Y_DIMENSION, nextPoint.z));
+            }
+            
+            const planarMaterial = new THREE.LineBasicMaterial({ color: 0x888888 });
+            const planarGeometry = new THREE.BufferGeometry().setFromPoints(planarSpiralPoints);
+            simulationGroup.add(new THREE.Line(planarGeometry, planarMaterial));
+
+            const curve = new THREE.CatmullRomCurve3(alzarTrajectoryPoints);
+            const tubeGeometry = new THREE.TubeGeometry(curve, steps * 4, 0.05, 8, false);
+            const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            simulationGroup.add(new THREE.Mesh(tubeGeometry, tubeMaterial));
+
+            // ▼▼▼【修正点】頂点のインデックスを修正しました ▼▼▼
+            const lastPlanarBasePoint = planarSpiralPoints[steps -1];
+            const lastPlanarPoint = planarSpiralPoints[steps];
+            const lastSolidPoint = alzarTrajectoryPoints[steps];
+            // ▲▲▲
+
+            const tengu = TENGU_MAP[steps] || DEFAULT_TENGU;
+
+            const planarTriPoints = [new THREE.Vector3(0,0,0), lastPlanarBasePoint, lastPlanarPoint];
+            const planarTriGeom = new THREE.BufferGeometry().setFromPoints(planarTriPoints);
+            const planarEdgeMaterial = new THREE.LineDashedMaterial({ color: tengu.color, dashSize: 0.2, gapSize: 0.1 });
+            const planarWireframe = new THREE.LineSegments(new THREE.EdgesGeometry(planarTriGeom), planarEdgeMaterial);
+            planarWireframe.computeLineDistances();
+            simulationGroup.add(planarWireframe);
+
+            const solidTriPoints = [ lastPlanarBasePoint, lastPlanarPoint, lastSolidPoint ];
+            const solidTriGeom = new THREE.BufferGeometry().setFromPoints(solidTriPoints);
+            const solidFaceMaterial = new THREE.MeshBasicMaterial({ color: tengu.color, opacity: 0.4, transparent: true, side: THREE.DoubleSide });
+            simulationGroup.add(new THREE.Mesh(solidTriGeom, solidFaceMaterial));
+            const solidEdgeMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+            simulationGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(solidTriGeom), solidEdgeMaterial));
+            
+            const electron = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+            electron.position.copy(lastSolidPoint);
+            simulationGroup.add(electron);
+
+            updateInfoPanel(steps);
+            controls.target.copy(lastPlanarPoint).multiplyScalar(0.5);
+        }
+        
+        function updateInfoPanel(step) {
+            const dLabel = step + 1;
+            const tengu = TENGU_MAP[step] || { name: `${dLabel}d の発展領域`, color: DEFAULT_TENGU.color };
+            
+            const sideA = Math.sqrt(step);
+            const sideB = 1;
+            const hypotenuse = Math.sqrt(step + 1);
+            const solidHypotenuse = Math.sqrt(step + 1 + (step * Y_DIMENSION)**2);
+
+            infoTitle.innerHTML = `<span class="tengu-color-box" style="background-color:${tengu.color};"></span>${dLabel}d: ${tengu.name}`;
+            infoTitle.style.color = tengu.color;
+            
+            infoSides.innerHTML = `平面の構成辺: ${toCustomNotation(sideA)} と ${toCustomNotation(sideB)}`;
+            infoHypotenuse.innerHTML = `平面の斜辺 (基底): ${toCustomNotation(hypotenuse)}`;
+            infoSolidHypotenuse.innerHTML = `<strong>真の立体の斜辺: ${toCustomNotation(solidHypotenuse)}</strong>`;
+        }
+
+        function onWindowResize() {
+            camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+            updateSimulation();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+
+</body>
+</html>
