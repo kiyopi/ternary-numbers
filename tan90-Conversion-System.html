@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>電位のtan90°変換システム (3D・Z軸回転)</title>
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #121212; color: #e0e0e0; overflow: hidden; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 500px;
+            padding: 20px;
+            background-color: rgba(30, 30, 30, 0.85);
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border-top: 5px solid #bb86fc;
+        }
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.1em;
+            margin-top: 10px;
+        }
+        .info-item label { font-weight: bold; color: #bb86fc; }
+        .info-item span { font-weight: bold; color: #03dac6; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="3d-canvas"></canvas>
+    </div>
+    
+    <div id="controls">
+        <label for="step-slider" style="font-weight: bold; color: #bb86fc;">共鳴ステップ (0〜144回)</label>
+        <input type="range" id="step-slider" min="0" max="144" value="0" step="1" style="width: 100%;">
+        <div class="info-item">
+            <label>軌道を表示:</label>
+            <input type="checkbox" id="trail-checkbox" style="width: 20px; height: 20px;">
+        </div>
+        <div class="info-item">
+            <label>残像を表示:</label>
+            <input type="checkbox" id="afterimage-checkbox" style="width: 20px; height: 20px;">
+        </div>
+        <div class="info-item">
+            <label>現在のステップ:</label>
+            <span id="step-display">0</span>
+        </div>
+        <div class="info-item">
+            <label>合計回転角度:</label>
+            <span id="angle-display">0.000°</span>
+        </div>
+        <div class="info-item">
+            <label>先端の座標 (X,Y,Z):</label>
+            <span id="coords-display">(-2.00, 10.00, 0.00)</span>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // --- DOM要素 ---
+        const canvas = document.getElementById('3d-canvas');
+        const slider = document.getElementById('step-slider');
+        const trailCheckbox = document.getElementById('trail-checkbox');
+        const afterimageCheckbox = document.getElementById('afterimage-checkbox');
+        const stepDisplay = document.getElementById('step-display');
+        const angleDisplay = document.getElementById('angle-display');
+        const coordsDisplay = document.getElementById('coords-display');
+
+        // --- 3Dシーン ---
+        let scene, camera, renderer, controls, rectangleObject, rectangleFace;
+        let trailPoints = [];
+        let trailLine = null;
+        let afterimages = [];
+
+        // --- 定数 ---
+        const RECT_X = -2;
+        const RECT_Y = 10;
+        const STEP_ANGLE = 0.625;
+        
+        const TENGU_MAP = {
+            koke: { color: 0x00dd00 }, // XZ (緑)
+            shu:  { color: 0xff4444 }, // XY (赤)
+            kuu:  { color: 0x4488ff }, // YZ (青)
+        };
+        
+        const originalTip = new THREE.Vector3(RECT_X, RECT_Y, 0);
+
+        function createTenguPlanes(size) {
+            const group = new THREE.Group();
+            const planeOpacity = 0.1;
+            const planeMaterialTemplate = { transparent: true, opacity: planeOpacity, side: THREE.DoubleSide };
+
+            const kokePlane = new THREE.Mesh( new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ ...planeMaterialTemplate, color: TENGU_MAP.koke.color }) );
+            kokePlane.rotation.x = -Math.PI / 2;
+            group.add(kokePlane);
+            
+            const shuPlane = new THREE.Mesh( new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ ...planeMaterialTemplate, color: TENGU_MAP.shu.color }) );
+            group.add(shuPlane);
+            
+            const kuuPlane = new THREE.Mesh( new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ ...planeMaterialTemplate, color: TENGU_MAP.kuu.color }) );
+            kuuPlane.rotation.y = Math.PI / 2;
+            group.add(kuuPlane);
+
+            return group;
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(5, 8, 12); 
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.target.set(5, 5, 0); 
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(3, 5, 4);
+            scene.add(directionalLight);
+            
+            scene.add(createTenguPlanes(20)); // 平面を大きく
+            scene.add(new THREE.AxesHelper(10));
+
+            // 長方形のグループを作成
+            rectangleObject = new THREE.Group();
+
+            // 長方形の枠線
+            const points = [
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(RECT_X, 0, 0),
+                new THREE.Vector3(RECT_X, RECT_Y, 0),
+                new THREE.Vector3(0, RECT_Y, 0),
+                new THREE.Vector3(0, 0, 0)
+            ];
+            const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x3f51b5, linewidth: 3 });
+            const rectLine = new THREE.Line(lineGeometry, lineMaterial);
+            rectangleObject.add(rectLine);
+
+            // 長方形の面
+            const faceGeometry = new THREE.BufferGeometry();
+            const vertices = new Float32Array([
+                0, 0, 0,
+                RECT_X, 0, 0,
+                RECT_X, RECT_Y, 0,
+                0, RECT_Y, 0
+            ]);
+            const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
+            faceGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            faceGeometry.setIndex(new THREE.BufferAttribute(indices, 1));
+            faceGeometry.computeVertexNormals();
+
+            const faceMaterial = new THREE.MeshBasicMaterial({
+                color: 0x5c6bc0,
+                transparent: true,
+                opacity: 0.6,
+                side: THREE.DoubleSide
+            });
+            rectangleFace = new THREE.Mesh(faceGeometry, faceMaterial);
+            rectangleObject.add(rectangleFace);
+
+            scene.add(rectangleObject);
+
+            slider.addEventListener('input', draw);
+            trailCheckbox.addEventListener('change', handleTrailToggle);
+            afterimageCheckbox.addEventListener('change', handleAfterimageToggle);
+            window.addEventListener('resize', onWindowResize);
+
+            draw();
+            animate();
+        }
+
+        function handleTrailToggle() {
+            if (trailCheckbox.checked) {
+                // 軌道を生成
+                generateTrail();
+            } else {
+                // 軌道を削除
+                if (trailLine) {
+                    scene.remove(trailLine);
+                    trailLine = null;
+                }
+                trailPoints = [];
+            }
+        }
+
+        function generateTrail() {
+            // 既存の軌道を削除
+            if (trailLine) {
+                scene.remove(trailLine);
+            }
+
+            trailPoints = [];
+
+            // 0から144ステップまでの全軌道を計算
+            for (let step = 0; step <= 144; step++) {
+                const angleDeg = step * STEP_ANGLE;
+                const angleRad = angleDeg * (Math.PI / 180);
+
+                const q1 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -angleRad);
+                const rotatedYAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(q1);
+                const q2 = new THREE.Quaternion().setFromAxisAngle(rotatedYAxis, -angleRad);
+                const finalQuaternion = new THREE.Quaternion().multiplyQuaternions(q2, q1);
+
+                const rotatedTip = originalTip.clone().applyQuaternion(finalQuaternion);
+                trailPoints.push(rotatedTip);
+            }
+
+            // 軌道を描画
+            const trailGeometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
+            const trailMaterial = new THREE.LineBasicMaterial({ color: 0x03dac6, linewidth: 2 });
+            trailLine = new THREE.Line(trailGeometry, trailMaterial);
+            scene.add(trailLine);
+        }
+
+        function handleAfterimageToggle() {
+            if (afterimageCheckbox.checked) {
+                // 残像を生成
+                generateAfterimages();
+            } else {
+                // 残像を削除
+                afterimages.forEach(img => scene.remove(img));
+                afterimages = [];
+            }
+        }
+
+        function generateAfterimages() {
+            // 既存の残像を削除
+            afterimages.forEach(img => scene.remove(img));
+            afterimages = [];
+
+            // 一定間隔で長方形を配置（ステップ0から144まで、10ステップごと）
+            for (let step = 0; step <= 144; step += 10) {
+                const angleDeg = step * STEP_ANGLE;
+                const angleRad = angleDeg * (Math.PI / 180);
+
+                const q1 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -angleRad);
+                const rotatedYAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(q1);
+                const q2 = new THREE.Quaternion().setFromAxisAngle(rotatedYAxis, -angleRad);
+                const finalQuaternion = new THREE.Quaternion().multiplyQuaternions(q2, q1);
+
+                // 長方形を作成
+                const points = [
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(RECT_X, 0, 0),
+                    new THREE.Vector3(RECT_X, RECT_Y, 0),
+                    new THREE.Vector3(0, RECT_Y, 0),
+                    new THREE.Vector3(0, 0, 0)
+                ];
+                const rectGeometry = new THREE.BufferGeometry().setFromPoints(points);
+
+                // 透明度を段階的に変える（全体的に濃く）
+                const opacity = 0.7 + (step / 144) * 0.3;
+                const rectMaterial = new THREE.LineBasicMaterial({
+                    color: 0xff00ff,
+                    transparent: true,
+                    opacity: opacity,
+                    linewidth: 2
+                });
+
+                const rectLine = new THREE.Line(rectGeometry, rectMaterial);
+                rectLine.setRotationFromQuaternion(finalQuaternion);
+
+                scene.add(rectLine);
+                afterimages.push(rectLine);
+            }
+        }
+
+        function draw() {
+            const step = parseInt(slider.value);
+            const totalAngleDeg = step * STEP_ANGLE;
+            const totalAngleRad = totalAngleDeg * (Math.PI / 180);
+
+            stepDisplay.textContent = step;
+            angleDisplay.textContent = `${totalAngleDeg.toFixed(3)}°`;
+
+            // ▼▼▼【修正点】ステップ1とステップ2を同時に0.625度刻みで実行 ▼▼▼
+
+            // ステップ1: Z軸回りに回転 (-2,10,0)→(10,2,0)
+            const q1 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -totalAngleRad);
+
+            // ステップ2: ステップ1で回転した後のY軸方向の辺を軸として回転
+            // 元のY軸方向(0,1,0)をステップ1の回転で変換して、新しい回転軸を得る
+            const rotatedYAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(q1);
+            const q2 = new THREE.Quaternion().setFromAxisAngle(rotatedYAxis, -totalAngleRad);
+
+            // 2つの回転を合成: 先にステップ1、次にステップ2
+            const finalQuaternion = new THREE.Quaternion().multiplyQuaternions(q2, q1);
+            rectangleObject.setRotationFromQuaternion(finalQuaternion);
+
+            // 先端座標の計算
+            const rotatedTip = originalTip.clone().applyQuaternion(finalQuaternion);
+            coordsDisplay.textContent = `(${rotatedTip.x.toFixed(2)}, ${rotatedTip.y.toFixed(2)}, ${rotatedTip.z.toFixed(2)})`;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        init();
+    </script>
+
+</body>
+</html>
